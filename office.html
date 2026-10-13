@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grace Offering Verification</title>
+<meta name="theme-color" content="#233617">
+<meta name="apple-mobile-web-app-title" content="Verify">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="office.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand: #7BAE58;
+    --brand-deep: #233617;
+    --brand-mid: #4E7A35;
+    --bg: #F3F8EF;
+    --card: #FFFFFF;
+    --ink: #1E2A16;
+    --muted: #5B6A50;
+    --line: #DCE7D3;
+    --step-bg: #EFF6EA;
+    --step-line: #C6DBB6;
+    --step-ink: #233617;
+    --btn-bg: #233617;
+    --btn-ink: #FFFFFF;
+    --match: #3D7A28;
+    --match-bg: #EAF4E3;
+    --diff: #8A5200;
+    --diff-bg: #FFF4E0;
+    --diff-line: #E8B45C;
+    --danger: #B3261E;
+    --shadow: 0 1px 2px rgba(35, 54, 23, .06), 0 2px 8px rgba(35, 54, 23, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10160C;
+      --card: #1A2414;
+      --ink: #E8F0E1;
+      --muted: #A3B396;
+      --line: #2D3B24;
+      --step-bg: #243319;
+      --step-line: #3A4D2E;
+      --step-ink: #E8F0E1;
+      --btn-bg: #7BAE58;
+      --btn-ink: #10160C;
+      --match: #9BD07A;
+      --match-bg: #1F3317;
+      --diff: #F2C47A;
+      --diff-bg: #33270F;
+      --diff-line: #8A6420;
+      --danger: #F2B8B5;
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.4 'Poppins', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .top { background: var(--brand-deep); color: #fff; padding: 18px 16px 20px; text-align: center; }
+  .top img { height: 52px; display: block; margin: 0 auto 6px; }
+  .top p { margin: 0; font-size: 14px; color: #CFE3C0; letter-spacing: .02em; }
+
+  main { max-width: 640px; margin: 0 auto; padding: 12px 12px 120px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--brand-mid);
+  }
+  @media (prefers-color-scheme: dark) { h2 { color: var(--brand); } }
+  .hint { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+  .meta { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  input, select {
+    min-height: 46px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    font-size: 16px;
+    width: 100%;
+  }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+  .field { display: block; margin-top: 10px; }
+  .field > span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  /* Rows: name, counted, office input; a difference note below when they disagree */
+  .cols, .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px 116px;
+    gap: 10px;
+    align-items: center;
+  }
+  .cols {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-top: 4px;
+  }
+  .cols span:nth-child(n+2) { text-align: right; }
+  .line { padding: 6px 0; border-top: 1px solid var(--line); }
+  .line:first-child { border-top: 0; }
+  .row .name { overflow-wrap: anywhere; }
+  .row .name small { display: block; font-size: 12px; color: var(--muted); }
+  .row .counted { text-align: right; font-variant-numeric: tabular-nums; }
+  .dollar { position: relative; }
+  .dollar::before {
+    content: '$';
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .dollar input { padding-left: 26px; }
+  .dollar input.match { border-color: var(--match); background: var(--match-bg); }
+  .dollar input.diff { border-color: var(--diff-line); background: var(--diff-bg); }
+  .note { font-size: 13px; text-align: right; margin-top: 3px; }
+  .note.match { color: var(--match); }
+  .note.diff { color: var(--diff); font-weight: 600; }
+
+  table.totals { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.totals th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    text-align: right;
+    padding: 4px 0;
+  }
+  table.totals th:first-child, table.totals td:first-child { text-align: left; }
+  table.totals td { padding: 7px 0; border-top: 1px solid var(--line); text-align: right; }
+  table.totals tr.grand td { font-weight: 700; border-top: 2px solid var(--ink); }
+  table.totals td.diff { color: var(--diff); font-weight: 600; }
+  table.totals td.match { color: var(--match); }
+
+  .notice {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--step-bg);
+    border: 1px solid var(--step-line);
+    font-size: 14px;
+  }
+  .button {
+    min-height: 46px;
+    margin-top: 12px;
+    padding: 0 22px;
+    border-radius: 12px;
+    border: 0;
+    background: var(--btn-bg);
+    color: var(--btn-ink);
+    font-weight: 600;
+  }
+  .link {
+    background: none;
+    border: 0;
+    color: var(--muted);
+    text-decoration: underline;
+    padding: 6px 0;
+    font-size: 14px;
+  }
+  .status { text-align: center; padding: 28px 16px; color: var(--muted); }
+
+  .bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--brand-deep);
+    color: #fff;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, .15);
+  }
+  .bar-inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .total { flex: 1; line-height: 1.1; min-width: 0; }
+  .total span { display: block; font-size: 13px; color: #CFE3C0; text-transform: uppercase; letter-spacing: .06em; }
+  .total strong { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .total em { font-style: normal; font-size: 13px; color: #CFE3C0; margin-left: 6px; }
+  .primary {
+    min-height: 52px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--brand);
+    color: #10160C;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .primary:disabled { opacity: .6; }
+  .bar .primary:focus-visible { outline-color: #fff; }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 22, 12, .55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10;
+  }
+  @media (min-width: 600px) { .overlay { align-items: center; } }
+  .sheet {
+    width: 100%;
+    max-width: 460px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: var(--card);
+    border-radius: 20px;
+    padding: 22px 20px 18px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .25);
+  }
+  .sheet h3 { margin: 0 0 10px; font-size: 19px; }
+  .sheet .body { margin: 0 0 18px; color: var(--muted); }
+  .sheet .body p { margin: 10px 0 0; }
+  .sheet-buttons { display: flex; gap: 10px; }
+  .sheet-buttons button { flex: 1; min-height: 50px; border-radius: 12px; font-weight: 600; }
+  .secondary { background: var(--step-bg); border: 1px solid var(--step-line); color: var(--step-ink); }
+  .sheet .primary { background: var(--btn-bg); color: var(--btn-ink); padding: 0 12px; }
+  .check-mark {
+    width: 64px; height: 64px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: var(--brand);
+    display: grid;
+    place-items: center;
+  }
+  .check-mark::after {
+    content: '';
+    width: 14px; height: 26px;
+    border-right: 4px solid #fff;
+    border-bottom: 4px solid #fff;
+    transform: rotate(45deg) translate(-2px, -3px);
+  }
+  .sheet.done h3 { text-align: center; }
+
+  .toast {
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    max-width: 616px;
+    margin: 0 auto;
+    background: var(--danger);
+    color: #fff;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    z-index: 5;
+  }
+  @media (prefers-color-scheme: dark) { .toast { color: #10160C; } }
+</style>
+</head>
+<body>
+  <header class="top">
+    <img src="logo.png" alt="Grace Baptist Church">
+    <p>Business Office Verification</p>
+  </header>
+
+  <main>
+    <section class="card" id="codeCard" hidden>
+      <h2>Office Code</h2>
+      <label class="field">
+        <span>Business office code</span>
+        <input id="code" type="password" inputmode="numeric" autocomplete="off" maxlength="20">
+      </label>
+      <p class="hint">Only the business office has this code. This device remembers it.</p>
+      <button type="button" class="button" id="codeGo">Continue</button>
+    </section>
+
+    <section class="card" id="pickCard" hidden>
+      <div class="card-head"><h2>Report</h2><button type="button" class="link" id="reload">Reload list</button></div>
+      <select id="tab" aria-label="Report"></select>
+      <div class="meta" id="meta"></div>
+      <div class="notice" id="already" hidden></div>
+    </section>
+
+    <div class="status" id="status" hidden></div>
+
+    <div id="view" hidden>
+      <section class="card">
+        <div class="card-head"><h2>Coins</h2></div>
+        <div class="cols"><span></span><span>Counted</span><span>Office</span></div>
+        <div id="coins"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Bills</h2></div>
+        <div class="cols"><span></span><span>Counted</span><span>Office</span></div>
+        <div id="bills"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Checks</h2></div>
+        <div class="cols"><span></span><span>Counted</span><span>Office</span></div>
+        <div id="checks"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Totals</h2></div>
+        <table class="totals">
+          <thead><tr><th></th><th>Counted</th><th>Office</th><th>Difference</th></tr></thead>
+          <tbody id="totals"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Verified By</h2>
+        <label class="field">
+          <span>Your name</span>
+          <input id="verifier" maxlength="60" autocomplete="name">
+        </label>
+      </section>
+    </div>
+  </main>
+
+  <div class="bar" id="bar" hidden>
+    <div class="bar-inner">
+      <div class="total"><span>Office total</span><strong id="barTotal">$0.00</strong><em id="barDiff"></em></div>
+      <button type="button" class="primary" id="save">Save</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
+
+  <div class="overlay" id="dialog" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <div class="check-mark" id="dialogCheck" hidden></div>
+      <h3 id="dialogTitle"></h3>
+      <div class="body" id="dialogBody"></div>
+      <div class="sheet-buttons">
+        <button type="button" class="secondary" id="dialogCancel">Cancel</button>
+        <button type="button" class="primary" id="dialogOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // The Apps Script web app URL (Deploy > Manage deployments). The same one
+  // the counters' page uses.
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyAGE5yQD4HKz-ntOBreK_6QjVEHJUK8vVQ_MIk61CBMMz-OQzVyETXbjgQYGKtU3oE/exec';
+
+  const CODE_KEY = 'gbc-office-code';
+  const NAME_KEY = 'gbc-office-name';
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  let report = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function store(fn) {
+    try { return fn(window.localStorage); } catch (e) { return null; }
+  }
+
+  // Whole cents, so comparisons never trip over floating-point pennies.
+  function cents(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const n = Number(value);
+    return isFinite(n) ? Math.round(n * 100) : null;
+  }
+
+  function usd(c) {
+    return (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  }
+
+  function diffText(c) {
+    return (c > 0 ? '+' : '−') + usd(Math.abs(c));
+  }
+
+  // ---- Talking to the script ----------------------------------------------
+
+  // POST as plain text with no cookies: no CORS preflight, no Google login.
+  async function call(action, extra) {
+    let res;
+    try {
+      const r = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ action: action, code: store((s) => s.getItem(CODE_KEY)) || $('#code').value.trim() }, extra)),
+      });
+      res = await r.json();
+    } catch (e) {
+      throw new Error('Couldn’t reach the offering sheet. Check your connection.');
+    }
+    if (res.status === 'badcode') {
+      store((s) => s.removeItem(CODE_KEY));
+      showCode();
+      throw new Error('That office code isn’t right.');
+    }
+    if (res.status === 'error') throw new Error(res.message);
+    return res;
+  }
+
+  function showCode() {
+    $('#codeCard').hidden = false;
+    $('#pickCard').hidden = true;
+    $('#view').hidden = true;
+    $('#bar').hidden = true;
+    $('#status').hidden = true;
+    $('#code').value = '';
+    $('#code').focus();
+  }
+
+  function setStatus(text) {
+    $('#status').textContent = text;
+    $('#status').hidden = !text;
+  }
+
+  // ---- Report list ----------------------------------------------------------
+
+  async function loadList(keepTab) {
+    setStatus('Loading reports…');
+    $('#view').hidden = true;
+    $('#bar').hidden = true;
+    let res;
+    try {
+      res = await call('reports');
+    } catch (err) {
+      setStatus('');
+      toast(err.message);
+      return;
+    }
+    store((s) => s.setItem(CODE_KEY, store((x) => x.getItem(CODE_KEY)) || $('#code').value.trim()));
+    $('#codeCard').hidden = true;
+    $('#pickCard').hidden = false;
+    const select = $('#tab');
+    select.innerHTML = '';
+    if (!res.reports.length) {
+      setStatus('No offering reports yet. They appear here after the counters submit one.');
+      $('#meta').textContent = '';
+      return;
+    }
+    res.reports.forEach((r) => {
+      const o = document.createElement('option');
+      o.value = r.tab;
+      o.textContent = r.tab + ' · ' + usd(Math.round(r.total * 100)) + ' · ' + (r.verifiedBy ? '✓ Verified' : 'Not verified');
+      select.appendChild(o);
+    });
+    const firstOpen = res.reports.find((r) => !r.verifiedBy);
+    select.value = keepTab && res.reports.some((r) => r.tab === keepTab) ? keepTab : (firstOpen || res.reports[0]).tab;
+    loadReport(select.value);
+  }
+
+  // ---- One report -------------------------------------------------------------
+
+  async function loadReport(tab) {
+    setStatus('Loading ' + tab + '…');
+    $('#view').hidden = true;
+    $('#bar').hidden = true;
+    $('#already').hidden = true;
+    try {
+      report = await call('report', { tab: tab });
+    } catch (err) {
+      setStatus('');
+      toast(err.message);
+      return;
+    }
+    setStatus('');
+    $('#meta').innerHTML = esc(report.date) + '<br>Counted by <b>' + esc(report.counters.join(', ') || 'no names given') + '</b>';
+    if (report.verifiedBy) {
+      $('#already').innerHTML = 'Verified by <b>' + esc(report.verifiedBy) + '</b>' +
+        (report.verifiedOn ? ' on ' + esc(report.verifiedOn) : '') + '. Saving again replaces those figures.';
+      $('#already').hidden = false;
+    }
+    render();
+    $('#view').hidden = false;
+    $('#bar').hidden = false;
+  }
+
+  function moneyValue(v) {
+    return v === '' || v === null || v === undefined ? '' : String(Math.round(Number(v) * 100) / 100);
+  }
+
+  function line(target, key, name, sub, counted, office) {
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.innerHTML = '<div class="row">' +
+      '<span class="name">' + esc(name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' +
+      '<span class="counted">' + usd(counted) + '</span>' +
+      '<div class="dollar"><input class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="Office amount for ' + esc(name) + '"></div>' +
+      '</div><div class="note" hidden></div>';
+    const input = div.querySelector('input');
+    input.value = moneyValue(office);
+    Object.assign(input.dataset, { key: key, counted: counted });
+    $(target).appendChild(div);
+  }
+
+  function render() {
+    ['#coins', '#bills', '#checks'].forEach((t) => { $(t).innerHTML = ''; });
+    report.coins.forEach((c) => line('#coins', 'coin:' + c.name, c.name, c.quantity ? c.quantity + ' counted' : '', Math.round(c.counted * 100), c.office));
+    report.bills.forEach((b) => line('#bills', 'bill:' + b.name, b.name, b.quantity ? b.quantity + ' counted' : '', Math.round(b.counted * 100), b.office));
+    const n = report.checks.count;
+    line('#checks', 'checks', 'Checks total', n + (n === 1 ? ' check' : ' checks') + ' counted', Math.round(report.checks.counted * 100), report.checks.office);
+    $('#verifier').value = store((s) => s.getItem(NAME_KEY)) || '';
+    recalc();
+  }
+
+  // Colors each office box green when it matches the count, amber when it doesn't.
+  function recalc() {
+    const sums = { coin: 0, bill: 0, checks: 0 };
+    let differing = 0;
+    $$('#view input[data-key]').forEach((input) => {
+      const counted = Number(input.dataset.counted);
+      const office = cents(input.value);
+      const note = input.closest('.line').querySelector('.note');
+      input.classList.remove('match', 'diff');
+      note.className = 'note';
+      note.hidden = true;
+      if (office !== null) {
+        sums[input.dataset.key.split(':')[0]] += office;
+        if (office === counted) {
+          input.classList.add('match');
+        } else {
+          differing++;
+          input.classList.add('diff');
+          note.classList.add('diff');
+          note.textContent = 'Office counted ' + usd(Math.abs(office - counted)) + (office > counted ? ' more' : ' less');
+          note.hidden = false;
+        }
+      }
+    });
+    const counted = report.counted;   // coins, bills, checks, total from the report
+    const office = [sums.coin, sums.bill, sums.checks];
+    office.push(office[0] + office[1] + office[2]);
+    const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
+    $('#totals').innerHTML = names.map((name, i) => {
+      const c = Math.round(counted[i] * 100);
+      const d = office[i] - c;
+      return '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + name + '</td><td>' + usd(c) + '</td><td>' + usd(office[i]) +
+        '</td><td class="' + (d === 0 ? 'match' : 'diff') + '">' + (d === 0 ? '✓' : diffText(d)) + '</td></tr>';
+    }).join('');
+    const totalDiff = office[3] - Math.round(counted[3] * 100);
+    $('#barTotal').textContent = usd(office[3]);
+    $('#barDiff').textContent = totalDiff === 0 ? '✓ matches' : diffText(totalDiff) + ' vs. count';
+    return { office, counted, totalDiff, differing };
+  }
+
+  function collect() {
+    const office = { coins: {}, bills: {}, checks: '' };
+    $$('#view input[data-key]').forEach((input) => {
+      const [kind, name] = input.dataset.key.split(':');
+      if (kind === 'coin') office.coins[name] = input.value;
+      else if (kind === 'bill') office.bills[name] = input.value;
+      else office.checks = input.value;
+    });
+    return office;
+  }
+
+  // ---- Dialogs and messages -----------------------------------------------
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
+  }
+
+  function dialog(opts) {
+    return new Promise((resolve) => {
+      $('#dialogTitle').textContent = opts.title;
+      $('#dialogBody').innerHTML = opts.body;
+      $('#dialogOk').textContent = opts.ok || 'OK';
+      $('#dialogCancel').hidden = !opts.cancel;
+      $('#dialogCancel').textContent = opts.cancel || '';
+      $('#dialogCheck').hidden = !opts.check;
+      $('.sheet').classList.toggle('done', !!opts.check);
+      $('#dialog').hidden = false;
+      $('#dialogOk').focus();
+      const finish = (ok) => {
+        $('#dialog').hidden = true;
+        $('#dialogOk').onclick = $('#dialogCancel').onclick = null;
+        resolve(ok);
+      };
+      $('#dialogOk').onclick = () => finish(true);
+      $('#dialogCancel').onclick = () => finish(false);
+    });
+  }
+
+  function totalsTable(counted, office) {
+    const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
+    return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
+      names.map((n, i) => '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + n + '</td><td>' + usd(counted[i]) + '</td><td>' + usd(office[i]) + '</td></tr>').join('') +
+      '</tbody></table>';
+  }
+
+  // ---- Save ---------------------------------------------------------------
+
+  async function save() {
+    const verifier = $('#verifier').value.trim();
+    if (!verifier) {
+      toast('Enter your name under Verified By.');
+      $('#verifier').focus();
+      return;
+    }
+    $('#toast').hidden = true;
+    const t = recalc();
+    const counted = t.counted.map((v) => Math.round(v * 100));
+    const warn = t.differing
+      ? '<p><b>' + t.differing + (t.differing === 1 ? ' amount differs' : ' amounts differ') + ' from the count.</b></p>'
+      : '<p>Every amount you entered matches the count.</p>';
+    const ok = await dialog({
+      title: 'Save verification for ' + report.tab + '?',
+      body: totalsTable(counted, t.office) + warn,
+      ok: 'Save',
+      cancel: 'Go back',
+    });
+    if (!ok) return;
+
+    const btn = $('#save');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    let res;
+    try {
+      res = await call('verify', { tab: report.tab, verifier: verifier, office: collect() });
+    } catch (err) {
+      toast(err.message + ' Your numbers are still here, so try again.');
+      return;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
+    store((s) => s.setItem(NAME_KEY, verifier));
+    await dialog({
+      check: true,
+      title: 'Verification saved',
+      body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100))) +
+        '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>',
+      ok: 'Done',
+    });
+    loadList(res.tab);
+  }
+
+  // ---- Events -------------------------------------------------------------
+
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t.matches('#view input[data-key]')) return;
+    // Digits and one decimal point, at most two places.
+    let clean = t.value.replace(/[^\d.]/g, '');
+    const dot = clean.indexOf('.');
+    if (dot >= 0) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+    clean = clean.slice(0, 10);
+    if (clean !== t.value) t.value = clean;
+    recalc();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    if (e.target.matches('input.num')) setTimeout(() => e.target.select(), 0);
+  });
+
+  $('#codeGo').addEventListener('click', () => {
+    if (!$('#code').value.trim()) { toast('Enter the business office code.'); return; }
+    loadList();
+  });
+  $('#code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#codeGo').click(); });
+  $('#tab').addEventListener('change', () => loadReport($('#tab').value));
+  $('#reload').addEventListener('click', () => loadList($('#tab').value));
+  $('#save').addEventListener('click', save);
+
+  if (store((s) => s.getItem(CODE_KEY))) loadList();
+  else showCode();
+</script>
+</body>
+</html>

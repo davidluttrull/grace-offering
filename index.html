@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grace Offering Report</title>
+<meta name="theme-color" content="#233617">
+<meta name="apple-mobile-web-app-title" content="Offering">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand: #7BAE58;
+    --brand-deep: #233617;
+    --brand-mid: #4E7A35;
+    --bg: #F3F8EF;
+    --card: #FFFFFF;
+    --ink: #1E2A16;
+    --muted: #5B6A50;
+    --line: #DCE7D3;
+    --step-bg: #EFF6EA;
+    --step-line: #C6DBB6;
+    --step-ink: #233617;
+    --btn-bg: #233617;
+    --btn-ink: #FFFFFF;
+    --filled: #F6FAF2;
+    --danger: #B3261E;
+    --shadow: 0 1px 2px rgba(35, 54, 23, .06), 0 2px 8px rgba(35, 54, 23, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10160C;
+      --card: #1A2414;
+      --ink: #E8F0E1;
+      --muted: #A3B396;
+      --line: #2D3B24;
+      --step-bg: #243319;
+      --step-line: #3A4D2E;
+      --step-ink: #E8F0E1;
+      --btn-bg: #7BAE58;
+      --btn-ink: #10160C;
+      --filled: #1F2C18;
+      --danger: #F2B8B5;
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.4 'Poppins', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .top {
+    background: var(--brand-deep);
+    color: #fff;
+    padding: 18px 16px 20px;
+    text-align: center;
+  }
+  .top img { height: 52px; display: block; margin: 0 auto 6px; }
+  .top p { margin: 0; font-size: 14px; color: #CFE3C0; letter-spacing: .02em; }
+
+  main {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 12px 12px 120px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--brand-mid);
+  }
+  @media (prefers-color-scheme: dark) { h2 { color: var(--brand); } }
+  h3 { margin: 14px 0 2px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .sub {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .hint { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+
+  input {
+    min-height: 46px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    font-size: 16px;
+    width: 100%;
+  }
+  input:not(:placeholder-shown) { background: var(--filled); border-color: var(--step-line); }
+  input:focus, button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+  input[type="date"] { -webkit-appearance: none; appearance: none; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .field { display: block; margin-top: 10px; }
+  .field > span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+
+  /* Coin and bill rows: name, quantity, amount */
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 92px 96px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row:first-child { border-top: 0; }
+  .row .amt { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row .amt.on { color: var(--ink); font-weight: 600; }
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 92px 96px;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .cols span:nth-child(n+2) { text-align: right; }
+
+  /* Money rows: name, $ amount */
+  .money-row {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+  .money-row.custom { grid-template-columns: 1fr 120px; }
+  .money-row:first-child { border-top: 0; }
+  .dollar { position: relative; }
+  .dollar::before {
+    content: '$';
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .dollar input { padding-left: 26px; }
+
+  /* Checks */
+  .check {
+    display: grid;
+    grid-template-columns: 34px 1fr 46px;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+  }
+  .check .n { color: var(--muted); font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  .icon-btn {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    border: 1px solid var(--step-line);
+    background: var(--step-bg);
+    color: var(--step-ink);
+    font-size: 22px;
+    line-height: 1;
+  }
+  .add {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 8px;
+    border-radius: 12px;
+    border: 1px dashed var(--step-line);
+    background: transparent;
+    color: var(--step-ink);
+    font-weight: 600;
+  }
+
+  .totals .line {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .totals .card-head + .line { border-top: 0; }
+  .totals .grand { font-weight: 700; font-size: 18px; border-top: 2px solid var(--ink); margin-top: 2px; }
+
+  .extra {
+    display: grid;
+    grid-template-columns: 1fr 120px 46px;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+  }
+  .note {
+    margin: 6px 0 4px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--step-bg);
+    border: 1px solid var(--step-line);
+    font-size: 14px;
+  }
+
+  .link {
+    display: block;
+    margin: 4px auto 0;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    text-decoration: underline;
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--brand-deep);
+    color: #fff;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, .15);
+  }
+  .bar-inner { max-width: 560px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .total { flex: 1; line-height: 1.1; min-width: 0; }
+  .total span { display: block; font-size: 13px; color: #CFE3C0; text-transform: uppercase; letter-spacing: .06em; }
+  .total strong { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .primary {
+    min-height: 52px;
+    padding: 0 26px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--brand);
+    color: #10160C;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .primary:disabled { opacity: .6; }
+  .bar .primary:focus-visible { outline-color: #fff; }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 22, 12, .55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10;
+  }
+  @media (min-width: 600px) { .overlay { align-items: center; } }
+  .sheet {
+    width: 100%;
+    max-width: 440px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: var(--card);
+    border-radius: 20px;
+    padding: 22px 20px 18px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .25);
+  }
+  .sheet h3 { margin: 0 0 10px; font-size: 19px; color: var(--ink); }
+  .sheet .body { margin: 0 0 18px; color: var(--muted); }
+  .sheet table { width: 100%; border-collapse: collapse; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .sheet td { padding: 4px 0; }
+  .sheet td:last-child { text-align: right; }
+  .sheet tr.grand td { font-weight: 700; font-size: 18px; border-top: 2px solid var(--ink); padding-top: 6px; }
+  .sheet tr.aside td { color: var(--muted); font-size: 14px; padding-top: 8px; }
+  .sheet .names { margin-top: 10px; font-size: 14px; }
+  .sheet-buttons { display: flex; gap: 10px; }
+  .sheet-buttons button { flex: 1; min-height: 50px; border-radius: 12px; font-weight: 600; }
+  .secondary { background: var(--step-bg); border: 1px solid var(--step-line); color: var(--step-ink); }
+  .sheet .primary { background: var(--btn-bg); color: var(--btn-ink); padding: 0 12px; }
+  .check-mark {
+    width: 64px; height: 64px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: var(--brand);
+    display: grid;
+    place-items: center;
+  }
+  .check-mark::after {
+    content: '';
+    width: 14px; height: 26px;
+    border-right: 4px solid #fff;
+    border-bottom: 4px solid #fff;
+    transform: rotate(45deg) translate(-2px, -3px);
+  }
+  .sheet.done h3 { text-align: center; }
+
+  .toast {
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    max-width: 536px;
+    margin: 0 auto;
+    background: var(--danger);
+    color: #fff;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    z-index: 5;
+  }
+  @media (prefers-color-scheme: dark) { .toast { color: #10160C; } }
+</style>
+</head>
+<body>
+  <header class="top">
+    <img src="logo.png" alt="Grace Baptist Church">
+    <p>Offering Report</p>
+  </header>
+
+  <main>
+    <section class="card" id="dateCard">
+      <h2>Report</h2>
+      <label class="field">
+        <span>Date</span>
+        <input type="date" id="date" required>
+      </label>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Coins</h2><span class="sub" id="coinTotal">$0.00</span></div>
+      <div class="cols"><span></span><span>Quantity</span><span>Amount</span></div>
+      <div id="coins"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Bills</h2><span class="sub" id="billTotal">$0.00</span></div>
+      <div class="cols"><span></span><span>Quantity</span><span>Amount</span></div>
+      <div id="bills"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Checks</h2><span class="sub" id="checkTotal">$0.00</span></div>
+      <div id="checks"></div>
+      <button type="button" class="add" id="addCheck">+ Add check</button>
+      <p class="hint" id="checkHint"></p>
+    </section>
+
+    <section class="card totals">
+      <div class="card-head"><h2>Totals</h2></div>
+      <div class="line"><span>Coins</span><span id="tCoins">$0.00</span></div>
+      <div class="line"><span>Bills</span><span id="tBills">$0.00</span></div>
+      <div class="line"><span id="tChecksLabel">Checks</span><span id="tChecks">$0.00</span></div>
+      <div class="line grand"><span>Total Offering</span><span id="tTotal">$0.00</span></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Designations</h2><span class="sub" id="desTotal">$0.00</span></div>
+      <p class="note">Amounts in this section are <b>not</b> added to the Total Offering.</p>
+      <h3>Sunday School Envelopes</h3>
+      <div id="classes"></div>
+      <div id="extraClasses"></div>
+      <button type="button" class="add" data-add="class">+ Add class</button>
+      <h3>Other Designations</h3>
+      <div id="designations"></div>
+      <div id="extraDesignations"></div>
+      <button type="button" class="add" data-add="designation">+ Add designation</button>
+    </section>
+
+    <section class="card">
+      <h2>Counters</h2>
+      <p class="hint">At least two counters verify each report.</p>
+      <label class="field"><span>Counter 1</span><input id="counter0" maxlength="60" autocomplete="off"></label>
+      <label class="field"><span>Counter 2</span><input id="counter1" maxlength="60" autocomplete="off"></label>
+      <label class="field"><span>Counter 3 (optional)</span><input id="counter2" maxlength="60" autocomplete="off"></label>
+      <label class="field">
+        <span>Counter code</span>
+        <input id="code" type="password" inputmode="numeric" autocomplete="off" maxlength="20">
+      </label>
+      <p class="hint">Get the code from the church office. This phone remembers it.</p>
+    </section>
+
+    <button type="button" class="link" id="clear">Clear form</button>
+  </main>
+
+  <div class="bar">
+    <div class="bar-inner">
+      <div class="total"><span>Total offering</span><strong id="barTotal">$0.00</strong></div>
+      <button type="button" class="primary" id="submit">Submit</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
+
+  <div class="overlay" id="dialog" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <div class="check-mark" id="dialogCheck" hidden></div>
+      <h3 id="dialogTitle"></h3>
+      <div class="body" id="dialogBody"></div>
+      <div class="sheet-buttons">
+        <button type="button" class="secondary" id="dialogCancel">Cancel</button>
+        <button type="button" class="primary" id="dialogOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // The Apps Script web app URL (Deploy > Manage deployments). It stays the
+  // same when a new version is deployed.
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyAGE5yQD4HKz-ntOBreK_6QjVEHJUK8vVQ_MIk61CBMMz-OQzVyETXbjgQYGKtU3oE/exec';
+
+  // These names must match COINS and BILLS in Code.gs.
+  const COINS = [['Pennies', 1], ['Nickels', 5], ['Dimes', 10], ['Quarters', 25], ['Half Dollar', 50], ['Dollar Coin', 100]];
+  const BILLS = [['Ones', 100], ['Twos', 200], ['Fives', 500], ['Tens', 1000], ['Twenties', 2000], ['Fifties', 5000], ['Hundreds', 10000]];
+  // The designation lists come from Code.gs (SUNDAY_SCHOOL, OTHER_DESIGNATIONS).
+  // These copies let the page show at once; it refreshes them from the script.
+  const DEFAULT_LISTS = {
+    sundaySchool: ['Women Walking w/ Purpose', "Men's Class (Bronkema)", 'Auditorium (Dubois)',
+      'Youth', 'Morning Glory (Ward)', 'College and Career'],
+    otherDesignations: ['Sew and Share', 'Missions', 'Sunday School Books', 'Missions - Jimmy Gilbert',
+      'Spanish Check', 'Spanish Cash', "God's Turn", 'Keenagers'],
+  };
+  const MAX_EXTRAS = 10;
+  const MAX_CHECKS = 34;
+
+  const DRAFT_KEY = 'gbc-offering-draft';
+  const NAMES_KEY = 'gbc-offering-counters';
+  const CODE_KEY = 'gbc-offering-code';
+  const LISTS_KEY = 'gbc-offering-lists';
+  const DRAFT_MAX_AGE = 12 * 60 * 60 * 1000;
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  let uid = 0;
+  let LISTS = DEFAULT_LISTS;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function store(fn) {
+    try { return fn(window.localStorage); } catch (e) { return null; }
+  }
+
+  // Work in whole cents so totals never pick up floating-point pennies.
+  function cents(value) {
+    if (!value) return 0;
+    const n = Number(value);
+    return isFinite(n) ? Math.round(n * 100) : 0;
+  }
+
+  function usd(c) {
+    return (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  }
+
+  // ---- Build the form -----------------------------------------------------
+
+  function countRows(target, list, kind) {
+    list.forEach(([name, each]) => {
+      const id = 'q' + (++uid);
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = '<label for="' + id + '">' + esc(name) + '</label>' +
+        '<input id="' + id + '" class="num" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="0" autocomplete="off">' +
+        '<span class="amt">$0.00</span>';
+      Object.assign(row.querySelector('input').dataset, { kind: kind, name: name, each: each });
+      $(target).appendChild(row);
+    });
+  }
+
+  function moneyRow(target, name, attrs) {
+    const id = 'm' + (++uid);
+    const row = document.createElement('div');
+    row.className = 'money-row';
+    row.innerHTML = '<label for="' + id + '">' + esc(name) + '</label>' +
+      '<div class="dollar"><input id="' + id + '" class="num money" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>';
+    Object.assign(row.querySelector('input').dataset, attrs);
+    $(target).appendChild(row);
+  }
+
+  function buildDesignations() {
+    $('#classes').innerHTML = '';
+    $('#designations').innerHTML = '';
+    LISTS.sundaySchool.forEach((n) => moneyRow('#classes', n, { designation: n }));
+    LISTS.otherDesignations.forEach((n) => moneyRow('#designations', n, { designation: n }));
+  }
+
+  function build() {
+    countRows('#coins', COINS, 'coin');
+    countRows('#bills', BILLS, 'bill');
+    buildDesignations();
+  }
+
+  // Classes and designations the counters add with the + buttons.
+  function extraBox(kind) { return $(kind === 'class' ? '#extraClasses' : '#extraDesignations'); }
+
+  function addExtra(kind, label, amount) {
+    const box = extraBox(kind);
+    if (box.children.length >= MAX_EXTRAS) return null;
+    const name = kind === 'class' ? 'Class name' : 'Designation';
+    const row = document.createElement('div');
+    row.className = 'extra';
+    row.innerHTML = '<input type="text" maxlength="40" placeholder="' + name + '" aria-label="' + name + '" data-extra="' + kind + '" data-part="label" autocomplete="off">' +
+      '<div class="dollar"><input class="num money" type="text" inputmode="decimal" placeholder="0.00" aria-label="Amount" data-extra="' + kind + '" data-part="amount" autocomplete="off"></div>' +
+      '<button type="button" class="icon-btn" data-remove-extra aria-label="Remove">&times;</button>';
+    row.querySelector('[data-part="label"]').value = label || '';
+    row.querySelector('[data-part="amount"]').value = amount || '';
+    box.appendChild(row);
+    updateAddButtons();
+    return row.querySelector('input');
+  }
+
+  function extras(kind) {
+    return Array.from(extraBox(kind).children).map((row) => ({
+      label: row.querySelector('[data-part="label"]').value.trim(),
+      amount: row.querySelector('[data-part="amount"]').value,
+    }));
+  }
+
+  function setExtras(kind, list) {
+    extraBox(kind).innerHTML = '';
+    (list || []).forEach((x) => { if (x && (x.label || x.amount)) addExtra(kind, x.label, x.amount); });
+    updateAddButtons();
+  }
+
+  function updateAddButtons() {
+    ['class', 'designation'].forEach((kind) => {
+      $('[data-add="' + kind + '"]').hidden = extraBox(kind).children.length >= MAX_EXTRAS;
+    });
+  }
+
+  // Checks: there's always one empty box at the end, so counters can keep typing.
+  function checkInputs() { return $$('#checks input'); }
+
+  function addCheck(value) {
+    const list = $('#checks');
+    if (list.children.length >= MAX_CHECKS) return null;
+    const row = document.createElement('div');
+    row.className = 'check';
+    row.innerHTML = '<span class="n"></span>' +
+      '<div class="dollar"><input class="num money" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" enterkeyhint="next"></div>' +
+      '<button type="button" class="icon-btn" aria-label="Remove check">&times;</button>';
+    row.querySelector('input').value = value || '';
+    list.appendChild(row);
+    renumber();
+    return row.querySelector('input');
+  }
+
+  function renumber() {
+    $$('#checks .check').forEach((row, i) => {
+      row.querySelector('.n').textContent = (i + 1) + '.';
+      row.querySelector('input').setAttribute('aria-label', 'Check ' + (i + 1) + ' amount');
+    });
+  }
+
+  function ensureBlankCheck() {
+    const inputs = checkInputs();
+    if (!inputs.length || inputs[inputs.length - 1].value !== '') addCheck();
+  }
+
+  function setChecks(values) {
+    $('#checks').innerHTML = '';
+    (values || []).forEach((v) => addCheck(v));
+    ensureBlankCheck();
+  }
+
+  // ---- Totals -------------------------------------------------------------
+
+  function recalc() {
+    const sum = (kind) => $$('input[data-kind="' + kind + '"]').reduce((s, i) => {
+      const c = (Number(i.value) || 0) * Number(i.dataset.each);
+      const amt = i.parentNode.querySelector('.amt');
+      amt.textContent = usd(c);
+      amt.classList.toggle('on', c > 0);
+      return s + c;
+    }, 0);
+    const coins = sum('coin');
+    const bills = sum('bill');
+    const filled = checkInputs().filter((i) => i.value !== '');
+    const checks = filled.reduce((s, i) => s + cents(i.value), 0);
+    const total = coins + bills + checks;
+    const des = $$('input[data-designation], input[data-extra][data-part="amount"]').reduce((s, i) => s + cents(i.value), 0);
+
+    $('#coinTotal').textContent = $('#tCoins').textContent = usd(coins);
+    $('#billTotal').textContent = $('#tBills').textContent = usd(bills);
+    $('#checkTotal').textContent = $('#tChecks').textContent = usd(checks);
+    $('#tChecksLabel').textContent = 'Checks (' + filled.length + ')';
+    $('#tTotal').textContent = $('#barTotal').textContent = usd(total);
+    $('#desTotal').textContent = usd(des);
+    const n = $('#checks').children.length;
+    $('#addCheck').hidden = n >= MAX_CHECKS;
+    $('#checkHint').textContent = n >= MAX_CHECKS
+      ? 'The report has room for ' + MAX_CHECKS + ' checks. Add any others in the Sheet.'
+      : '';
+    return { coins, bills, checks, total, des, checkCount: filled.length };
+  }
+
+  // ---- Form state ---------------------------------------------------------
+
+  function today() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function collect() {
+    const pick = (kind) => {
+      const o = {};
+      $$('input[data-kind="' + kind + '"]').forEach((i) => { o[i.dataset.name] = i.value; });
+      return o;
+    };
+    const designations = {};
+    $$('input[data-designation]').forEach((i) => { designations[i.dataset.designation] = i.value; });
+    return {
+      date: $('#date').value,
+      coins: pick('coin'),
+      bills: pick('bill'),
+      checks: checkInputs().map((i) => i.value).filter((v) => v !== ''),
+      designations: designations,
+      extraClasses: extras('class'),
+      extraDesignations: extras('designation'),
+      counters: [0, 1, 2].map((i) => $('#counter' + i).value.trim()),
+    };
+  }
+
+  function apply(data) {
+    $('#date').value = data.date || today();
+    $$('input[data-kind]').forEach((i) => { i.value = ((data[i.dataset.kind + 's'] || {})[i.dataset.name]) || ''; });
+    setChecks(data.checks);
+    applyDesignations(data);
+  }
+
+  function applyDesignations(data) {
+    $$('input[data-designation]').forEach((i) => { i.value = (data.designations || {})[i.dataset.designation] || ''; });
+    setExtras('class', data.extraClasses);
+    setExtras('designation', data.extraDesignations);
+    recalc();
+  }
+
+  // Show the lists saved on this phone (or the built-in ones) right away, then
+  // fetch the script's current lists and rebuild if they've changed.
+  async function refreshLists() {
+    let fresh;
+    try {
+      const r = await fetch(API_URL);
+      const c = await r.json();
+      if (!Array.isArray(c.sundaySchool) || !Array.isArray(c.otherDesignations)) return;
+      fresh = { sundaySchool: c.sundaySchool, otherDesignations: c.otherDesignations };
+    } catch (e) {
+      return;
+    }
+    store((s) => s.setItem(LISTS_KEY, JSON.stringify(fresh)));
+    if (JSON.stringify(fresh) === JSON.stringify(LISTS)) return;
+    const data = collect();
+    LISTS = fresh;
+    buildDesignations();
+    applyDesignations(data);
+  }
+
+  function saveDraft() {
+    const data = collect();
+    data.savedAt = Date.now();
+    store((s) => s.setItem(DRAFT_KEY, JSON.stringify(data)));
+    store((s) => s.setItem(NAMES_KEY, JSON.stringify(data.counters)));
+  }
+
+  function loadDraft() {
+    const data = store((s) => JSON.parse(s.getItem(DRAFT_KEY)));
+    return data && Date.now() - data.savedAt < DRAFT_MAX_AGE ? data : null;
+  }
+
+  function resetForm() {
+    store((s) => s.removeItem(DRAFT_KEY));
+    apply({ date: today() });
+    window.scrollTo(0, 0);
+  }
+
+  // ---- Dialogs and messages -----------------------------------------------
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
+  }
+
+  function dialog(opts) {
+    return new Promise((resolve) => {
+      $('#dialogTitle').textContent = opts.title;
+      $('#dialogBody').innerHTML = opts.body;
+      $('#dialogOk').textContent = opts.ok || 'OK';
+      $('#dialogCancel').hidden = !opts.cancel;
+      $('#dialogCancel').textContent = opts.cancel || '';
+      $('#dialogCheck').hidden = !opts.check;
+      $('.sheet').classList.toggle('done', !!opts.check);
+      $('#dialog').hidden = false;
+      $('#dialogOk').focus();
+      const finish = (ok) => {
+        $('#dialog').hidden = true;
+        $('#dialogOk').onclick = $('#dialogCancel').onclick = null;
+        resolve(ok);
+      };
+      $('#dialogOk').onclick = () => finish(true);
+      $('#dialogCancel').onclick = () => finish(false);
+    });
+  }
+
+  function dateLabel(value) {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function summary(t, data) {
+    const names = data.counters.filter(Boolean).map(esc).join(', ');
+    return '<table>' +
+      '<tr><td>Coins</td><td>' + usd(t.coins) + '</td></tr>' +
+      '<tr><td>Bills</td><td>' + usd(t.bills) + '</td></tr>' +
+      '<tr><td>Checks (' + t.checkCount + ')</td><td>' + usd(t.checks) + '</td></tr>' +
+      '<tr class="grand"><td>Total Offering</td><td>' + usd(t.total) + '</td></tr>' +
+      '<tr class="aside"><td>Designations (not added)</td><td>' + usd(t.des) + '</td></tr>' +
+      '</table>' +
+      '<div class="names">' + esc(dateLabel(data.date)) + '<br>Counted by ' + names + '</div>';
+  }
+
+  // ---- Submit -------------------------------------------------------------
+
+  function validate(data) {
+    if (!data.date) return ['Pick the report date.', '#date'];
+    if (!data.counters[0]) return ['Counter 1 needs a name.', '#counter0'];
+    if (!data.counters[1]) return ['At least two counters need to enter their names.', '#counter1'];
+    if (!$('#code').value.trim()) return ['Enter the counter code.', '#code'];
+    for (const [kind, list] of [['class', data.extraClasses], ['designation', data.extraDesignations]]) {
+      const i = list.findIndex((x) => x.amount && !x.label);
+      if (i >= 0) return ['Name the ' + kind + ' for ' + usd(cents(list[i].amount)) + '.', '#' + extraBox(kind).id + ' .extra:nth-child(' + (i + 1) + ') [data-part="label"]'];
+    }
+    return null;
+  }
+
+  // POST as plain text with no cookies: no CORS preflight, no Google login.
+  async function api(body) {
+    let res;
+    try {
+      const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+      res = await r.json();
+    } catch (e) {
+      throw new Error('Couldn’t reach the offering sheet. Check your connection.');
+    }
+    if (res.status === 'error') throw new Error(res.message);
+    return res;
+  }
+
+  async function submit() {
+    const data = collect();
+    const problem = validate(data);
+    if (problem) {
+      toast(problem[0]);
+      $(problem[1]).focus();
+      return;
+    }
+    $('#toast').hidden = true;
+    const t = recalc();
+    const ok = await dialog({ title: 'Submit offering report?', body: summary(t, data), ok: 'Submit', cancel: 'Go back' });
+    if (!ok) return;
+
+    const btn = $('#submit');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    let res;
+    try {
+      res = await api(Object.assign({ code: $('#code').value.trim() }, data));
+    } catch (err) {
+      toast(err.message + ' Your numbers are still here, so try again.');
+      return;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    }
+
+    if (res.status === 'badcode') {
+      store((s) => s.removeItem(CODE_KEY));
+      $('#code').value = '';
+      $('#code').focus();
+      toast('That counter code isn’t right. Check with the church office.');
+      return;
+    }
+    store((s) => s.setItem(CODE_KEY, $('#code').value.trim()));
+
+    const sheetTotal = Math.round(Number(res.total) * 100);
+    const mismatch = sheetTotal !== t.total
+      ? '<p>The Sheet’s total (' + usd(sheetTotal) + ') doesn’t match this page (' + usd(t.total) + '). Check the tab before depositing.</p>'
+      : '';
+    await dialog({
+      check: true,
+      title: 'Report saved',
+      body: '<table><tr class="grand"><td>Total Offering</td><td>' + usd(sheetTotal) + '</td></tr></table>' +
+        '<div class="names">Saved to the tab <b>' + esc(res.tab) + '</b>.</div>' + mismatch,
+      ok: 'Start a new report',
+    });
+    resetForm();
+  }
+
+  // ---- Events -------------------------------------------------------------
+
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.matches('input[data-kind]')) {
+      const clean = t.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 6);
+      if (clean !== t.value) t.value = clean;
+    } else if (t.matches('input.money')) {
+      // Digits and one decimal point, at most two places.
+      let clean = t.value.replace(/[^\d.]/g, '');
+      const dot = clean.indexOf('.');
+      if (dot >= 0) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+      clean = clean.slice(0, 10);
+      if (clean !== t.value) t.value = clean;
+      if (t.closest('#checks')) ensureBlankCheck();
+    }
+    recalc();
+    if (t.id !== 'code') saveDraft();
+  });
+
+  // Enter on a check jumps to the next box.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !e.target.closest('#checks')) return;
+    e.preventDefault();
+    const inputs = checkInputs();
+    const next = inputs[inputs.indexOf(e.target) + 1];
+    if (next) next.focus();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    if (e.target.matches('input.num')) setTimeout(() => e.target.select(), 0);
+  });
+
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      const input = addExtra(add.dataset.add);
+      if (input) input.focus();
+      saveDraft();
+      return;
+    }
+    const removeExtra = e.target.closest('[data-remove-extra]');
+    if (removeExtra) {
+      removeExtra.parentNode.remove();
+      updateAddButtons();
+      recalc();
+      saveDraft();
+      return;
+    }
+    const remove = e.target.closest('#checks .icon-btn');
+    if (remove) {
+      remove.parentNode.remove();
+      renumber();
+      ensureBlankCheck();
+      recalc();
+      saveDraft();
+    }
+  });
+
+  $('#addCheck').addEventListener('click', () => {
+    const inputs = checkInputs();
+    const last = inputs[inputs.length - 1];
+    (last && last.value === '' ? last : addCheck()).focus();
+  });
+
+  $('#submit').addEventListener('click', submit);
+  $('#clear').addEventListener('click', async () => {
+    const ok = await dialog({ title: 'Clear the form?', body: 'This erases every amount on this page. Counter names stay.', ok: 'Clear', cancel: 'Cancel' });
+    if (ok) resetForm();
+  });
+
+  LISTS = store((s) => JSON.parse(s.getItem(LISTS_KEY))) || DEFAULT_LISTS;
+  build();
+  const names = store((s) => JSON.parse(s.getItem(NAMES_KEY))) || [];
+  [0, 1, 2].forEach((i) => { $('#counter' + i).value = names[i] || ''; });
+  $('#code').value = store((s) => s.getItem(CODE_KEY)) || '';
+  apply(loadDraft() || { date: today() });
+  refreshLists();
+</script>
+</body>
+</html>
