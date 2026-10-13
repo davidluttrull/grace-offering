@@ -9,7 +9,8 @@
  *
  * The business office's page (office.html) uses the same script the next day:
  * it lists the report tabs, shows the counters' figures, and saves the
- * office's own figures into the "Business Office Only" cells.
+ * office's own figures into the "Business Office Only" cells, plus the week's
+ * online giving. Saving also emails a PDF report to the staff (Report.gs).
  * See SETUP.md for how to deploy it.
  *
  * Every cell address below matches the church's offering report layout. If
@@ -78,7 +79,13 @@ const OFFICE_BILL_RANGE = 'E20:E26';
 const OFFICE_CHECKS_CELL = 'D33';
 const VERIFIER_CELL = 'G36';
 const VERIFIED_DATE_CELL = 'H36';
-const OFFICE_CELLS = [OFFICE_COIN_RANGE, OFFICE_BILL_RANGE, OFFICE_CHECKS_CELL, VERIFIER_CELL, VERIFIED_DATE_CELL];
+// Under the Totals box: the office's online giving for the week (D35), a note
+// about it (E35), and Total Giving = Total Offering + online giving (D36).
+const ONLINE_CELL = 'D35';
+const ONLINE_NOTE_CELL = 'E35';
+const TOTAL_GIVING_CELL = 'D36';
+const OFFICE_CELLS = [OFFICE_COIN_RANGE, OFFICE_BILL_RANGE, OFFICE_CHECKS_CELL, VERIFIER_CELL, VERIFIED_DATE_CELL,
+  ONLINE_CELL, ONLINE_NOTE_CELL];
 const MAX_LISTED_REPORTS = 25;
 
 const MAX_COUNT = 100000;
@@ -128,9 +135,11 @@ function setup() {
       : ss.insertSheet(TEMPLATE_NAME);
     buildTemplate_(template);
   }
+  ensureOnlineRows_(template);
   template.getRangeList(inputCells_().concat(OFFICE_CELLS)).clearContent();
   // Each report lays out its own Designations section below the title.
   template.getRange('A' + DESIGNATIONS_ROW + ':H' + (DESIGNATIONS_ROW + 60)).breakApart().clear();
+  ensureEmailsTab_();
   ss.setActiveSheet(template);
   ss.moveActiveSheet(ss.getNumSheets());
 
@@ -240,6 +249,25 @@ function buildTemplate_(sheet) {
   // Designations title; setup and each report fill in the rows below it.
   r('A37:H37').merge().setValue('Designations').setFontSize(14).setHorizontalAlignment('center')
     .setBorder(true, null, null, null, null, null);
+}
+
+/**
+ * Adds the Online Giving and Total Giving rows under the Totals box (B35:D36)
+ * and a note cell beside them (E35:F36). Report tabs made before these rows
+ * existed get them the first time they're verified.
+ */
+function ensureOnlineRows_(sheet) {
+  if (sheet.getRange('B35').getValue() === 'Online Giving') return;
+  const r = function (a1) { return sheet.getRange(a1); };
+  r('B35:D36').setFontFamily('Arial').setFontSize(11).setVerticalAlignment('middle');
+  r('B35:B36').setValues([['Online Giving'], ['Total Giving']]).setHorizontalAlignment('left');
+  r('C35').setBackground('#F3F3F3');   // the counters don't count online giving
+  r(ONLINE_CELL).setNumberFormat(AMOUNT_FORMAT).setHorizontalAlignment('right');
+  r('B36:D36').setBackground('#D9D9D9').setFontWeight('bold');
+  r(TOTAL_GIVING_CELL).setFormula('=D34+D35').setNumberFormat(AMOUNT_FORMAT).setHorizontalAlignment('right');
+  r('B35:D36').setBorder(true, true, true, true, true, true);
+  r('E35:F36').merge().setFontFamily('Arial').setFontSize(9).setFontStyle('italic').setWrap(true)
+    .setVerticalAlignment('top').setHorizontalAlignment('left');
 }
 
 /** Every green cell the page fills in. */
@@ -429,10 +457,15 @@ function getReport_(tab) {
     counted: totals.map(function (r) { return Number(r[0]) || 0; }),
     verifiedBy: String(sh.getRange(VERIFIER_CELL).getValue() || ''),
     verifiedOn: day(sh.getRange(VERIFIED_DATE_CELL).getValue()),
+    online: sh.getRange(ONLINE_CELL).getValue(),
+    onlineNote: String(sh.getRange(ONLINE_NOTE_CELL).getValue() || ''),
   };
 }
 
-/** Saves the office's figures into the report's Business Office Only cells. */
+/**
+ * Saves the office's figures into the report's Business Office Only cells,
+ * plus the week's online giving, then emails the report to the staff.
+ */
 function verifyReport_(body) {
   const verifier = clean_(body.verifier, 60);
   if (!verifier) throw new Error('Enter your name under Verified By.');
@@ -440,27 +473,43 @@ function verifyReport_(body) {
   const coins = COINS.map(function (c) { return [money_((office.coins || {})[c.name], c.name)]; });
   const bills = BILLS.map(function (b) { return [money_((office.bills || {})[b.name], b.name)]; });
   const checks = money_(office.checks, 'checks');
+  const online = money_(office.online, 'online giving');
+  const onlineNote = clean_(office.onlineNote, 100);
 
+  let sh, result, wasVerified;
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = reportSheet_(body.tab);
+    sh = reportSheet_(body.tab);
+    wasVerified = !!sh.getRange(VERIFIER_CELL).getValue();
+    ensureOnlineRows_(sh);
     sh.getRange(OFFICE_COIN_RANGE).setValues(coins);
     sh.getRange(OFFICE_BILL_RANGE).setValues(bills);
     sh.getRange(OFFICE_CHECKS_CELL).setValue(checks);
+    sh.getRange(ONLINE_CELL).setValue(online);
+    sh.getRange(ONLINE_NOTE_CELL).setValue(onlineNote);
     sh.getRange(VERIFIER_CELL).setValue(verifier);
     sh.getRange(VERIFIED_DATE_CELL).setValue(new Date());
     SpreadsheetApp.flush();
     const t = sh.getRange('C31:D34').getValues();
-    return {
+    result = {
       status: 'saved',
       tab: sh.getName(),
       counted: t.map(function (r) { return Number(r[0]) || 0; }),
       office: t.map(function (r) { return Number(r[1]) || 0; }),
+      online: online === '' ? 0 : online,
+      totalGiving: Number(sh.getRange(TOTAL_GIVING_CELL).getValue()) || 0,
     };
   } finally {
     lock.releaseLock();
   }
+  // The verification is saved whatever happens to the email.
+  try {
+    result.emailed = emailReport_(sh, reportRecipients_(), wasVerified);
+  } catch (err) {
+    result.emailed = { status: 'failed', message: err.message };
+  }
+  return result;
 }
 
 /** "Oct 12, 2026", or "Oct 12, 2026 (2)" if that tab already exists. */

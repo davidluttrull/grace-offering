@@ -160,6 +160,8 @@
   table.totals th:first-child, table.totals td:first-child { text-align: left; }
   table.totals td { padding: 7px 0; border-top: 1px solid var(--line); text-align: right; }
   table.totals tr.grand td { font-weight: 700; border-top: 2px solid var(--ink); }
+  table.totals th + th, table.totals td + td { padding-left: 10px; }
+  @media (max-width: 420px) { table.totals { font-size: 14px; } table.totals th { font-size: 11px; } }
   table.totals td.diff { color: var(--diff); font-weight: 600; }
   table.totals td.match { color: var(--match); }
 
@@ -332,6 +334,19 @@
       </section>
 
       <section class="card">
+        <div class="card-head"><h2>Online Giving</h2></div>
+        <p class="hint">This week's online gifts. They're added to Total Giving, not compared with the count.</p>
+        <label class="field">
+          <span>Online giving total</span>
+          <div class="dollar"><input id="online" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+        </label>
+        <label class="field">
+          <span>Note (optional)</span>
+          <input id="onlineNote" maxlength="100" autocomplete="off" placeholder="For example: Tithe.ly, Oct 5–11">
+        </label>
+      </section>
+
+      <section class="card">
         <h2>Verified By</h2>
         <label class="field">
           <span>Your name</span>
@@ -497,7 +512,9 @@
   }
 
   function moneyValue(v) {
-    return v === '' || v === null || v === undefined ? '' : String(Math.round(Number(v) * 100) / 100);
+    if (v === '' || v === null || v === undefined) return '';
+    const n = Math.round(Number(v) * 100) / 100;
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
   }
 
   function line(target, key, name, sub, counted, office) {
@@ -520,6 +537,8 @@
     report.bills.forEach((b) => line('#bills', 'bill:' + b.name, b.name, b.quantity ? b.quantity + ' counted' : '', Math.round(b.counted * 100), b.office));
     const n = report.checks.count;
     line('#checks', 'checks', 'Checks total', n + (n === 1 ? ' check' : ' checks') + ' counted', Math.round(report.checks.counted * 100), report.checks.office);
+    $('#online').value = moneyValue(report.online);
+    $('#onlineNote').value = report.onlineNote || '';
     $('#verifier').value = store((s) => s.getItem(NAME_KEY)) || '';
     recalc();
   }
@@ -552,20 +571,23 @@
     const office = [sums.coin, sums.bill, sums.checks];
     office.push(office[0] + office[1] + office[2]);
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
+    const online = cents($('#online').value) || 0;
     $('#totals').innerHTML = names.map((name, i) => {
       const c = Math.round(counted[i] * 100);
       const d = office[i] - c;
       return '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + name + '</td><td>' + usd(c) + '</td><td>' + usd(office[i]) +
         '</td><td class="' + (d === 0 ? 'match' : 'diff') + '">' + (d === 0 ? '✓' : diffText(d)) + '</td></tr>';
-    }).join('');
+    }).join('') +
+      '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online) + '</td><td></td></tr>';
     const totalDiff = office[3] - Math.round(counted[3] * 100);
     $('#barTotal').textContent = usd(office[3]);
     $('#barDiff').textContent = totalDiff === 0 ? '✓ matches' : diffText(totalDiff) + ' vs. count';
-    return { office, counted, totalDiff, differing };
+    return { office, counted, totalDiff, differing, online };
   }
 
   function collect() {
-    const office = { coins: {}, bills: {}, checks: '' };
+    const office = { coins: {}, bills: {}, checks: '', online: $('#online').value, onlineNote: $('#onlineNote').value.trim() };
     $$('#view input[data-key]').forEach((input) => {
       const [kind, name] = input.dataset.key.split(':');
       if (kind === 'coin') office.coins[name] = input.value;
@@ -607,11 +629,21 @@
     });
   }
 
-  function totalsTable(counted, office) {
+  function totalsTable(counted, office, online) {
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
     return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
       names.map((n, i) => '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + n + '</td><td>' + usd(counted[i]) + '</td><td>' + usd(office[i]) + '</td></tr>').join('') +
+      '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td></tr>' +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online) + '</td></tr>' +
       '</tbody></table>';
+  }
+
+  function emailNote(e) {
+    if (!e) return '';
+    if (e.status === 'sent') return '<p>The report was emailed to ' + e.count + (e.count === 1 ? ' person' : ' people') + ' on the staff list.</p>';
+    if (e.status === 'none') return '<p>No one is on the Report Emails list in the Sheet, so no report was emailed.</p>';
+    return '<p><b>The report couldn’t be emailed:</b> ' + esc(e.message) + ' The verification is saved. ' +
+      'The report can be sent again from the Sheet’s Offering menu.</p>';
   }
 
   // ---- Save ---------------------------------------------------------------
@@ -631,7 +663,7 @@
       : '<p>Every amount you entered matches the count.</p>';
     const ok = await dialog({
       title: 'Save verification for ' + report.tab + '?',
-      body: totalsTable(counted, t.office) + warn,
+      body: totalsTable(counted, t.office, t.online) + warn + '<p>Saving also emails the report to the staff.</p>',
       ok: 'Save',
       cancel: 'Go back',
     });
@@ -639,7 +671,7 @@
 
     const btn = $('#save');
     btn.disabled = true;
-    btn.textContent = 'Saving…';
+    btn.textContent = 'Saving and emailing…';
     let res;
     try {
       res = await call('verify', { tab: report.tab, verifier: verifier, office: collect() });
@@ -654,8 +686,13 @@
     await dialog({
       check: true,
       title: 'Verification saved',
-      body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100))) +
-        '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>',
+      body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100)), Math.round((res.online || 0) * 100)) +
+        '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>' + emailNote(res.emailed) +
+        // An older script ignores online giving and doesn't email; it doesn't send totalGiving back.
+        (res.totalGiving === undefined
+          ? '<p><b>The online giving wasn’t saved</b> because the script in the Sheet hasn’t been updated yet. ' +
+            'Once it’s updated, save this verification again.</p>'
+          : ''),
       ok: 'Done',
     });
     loadList(res.tab);
@@ -665,7 +702,7 @@
 
   document.addEventListener('input', (e) => {
     const t = e.target;
-    if (!t.matches('#view input[data-key]')) return;
+    if (!t.matches('#view input[data-key], #online')) return;
     // Digits and one decimal point, at most two places.
     let clean = t.value.replace(/[^\d.]/g, '');
     const dot = clean.indexOf('.');
