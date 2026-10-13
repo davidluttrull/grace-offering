@@ -339,9 +339,10 @@
     <section class="card" id="dateCard">
       <h2>Report</h2>
       <label class="field">
-        <span>Date</span>
+        <span>Sunday of this offering</span>
         <input type="date" id="date" required>
       </label>
+      <p class="hint">Starts on the most recent Sunday. Change it if this offering is from another day.</p>
     </section>
 
     <section class="card">
@@ -614,8 +615,10 @@
 
   // ---- Form state ---------------------------------------------------------
 
-  function today() {
+  // The most recent Sunday (today, on a Sunday). Reports are named for the Sunday they cover.
+  function lastSunday() {
     const d = new Date();
+    d.setDate(d.getDate() - d.getDay());
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
@@ -640,7 +643,7 @@
   }
 
   function apply(data) {
-    $('#date').value = data.date || today();
+    $('#date').value = data.date || lastSunday();
     $$('input[data-kind]').forEach((i) => { i.value = ((data[i.dataset.kind + 's'] || {})[i.dataset.name]) || ''; });
     setChecks(data.checks);
     applyDesignations(data);
@@ -687,7 +690,7 @@
 
   function resetForm() {
     store((s) => s.removeItem(DRAFT_KEY));
-    apply({ date: today() });
+    apply({ date: lastSunday() });
     window.scrollTo(0, 0);
   }
 
@@ -893,7 +896,7 @@
   const names = store((s) => JSON.parse(s.getItem(NAMES_KEY))) || [];
   [0, 1, 2].forEach((i) => { $('#counter' + i).value = names[i] || ''; });
   $('#code').value = store((s) => s.getItem(CODE_KEY)) || '';
-  apply(loadDraft() || { date: today() });
+  apply(loadDraft() || { date: lastSunday() });
   refreshLists();
 </script>
 </body>

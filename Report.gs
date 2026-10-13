@@ -74,7 +74,7 @@ function emailReport_(sh, recipients, updated) {
     const d = reportData_(sh, tz);
     MailApp.sendEmail({
       to: recipients.join(','),
-      subject: (updated ? 'Updated offering report: ' : 'Offering report: ') + d.shortDate +
+      subject: (updated ? 'Updated offering report for ' : 'Offering report for ') + d.forShort +
         ' (' + usd_(d.totalGiving) + ' total giving)',
       htmlBody: emailHtml_(d, updated),
       body: emailText_(d, updated),
@@ -135,12 +135,18 @@ function reportData_(sh, tz) {
   const online = num(sh.getRange(ONLINE_CELL).getValue());
   const offering = verifiedBy ? Number(totals[3][1]) || 0 : Number(totals[3][0]) || 0;
   const fmt = function (d, p) { return d instanceof Date ? Utilities.formatDate(d, tz, p) : ''; };
+  // The Sunday this offering belongs to: the report date, or the Sunday before it.
+  // ('u' is the ISO day number, 1 = Monday ... 7 = Sunday.)
+  const isSunday = date instanceof Date && fmt(date, 'u') === '7';
+  const sunday = date instanceof Date ? new Date(date.getTime() - (Number(fmt(date, 'u')) % 7) * 86400000) : null;
 
   return {
     tab: sh.getName(),
-    longDate: fmt(date, 'EEEE, MMMM d, yyyy') || sh.getName(),
-    shortDate: fmt(date, 'MMM d, yyyy') || sh.getName(),
-    fileDate: fmt(date, 'yyyy-MM-dd') || sh.getName(),
+    // "Sunday, October 11, 2026", or "Week of Sunday, ..." when the report date isn't a Sunday
+    forLabel: sunday ? (isSunday ? '' : 'Week of ') + fmt(sunday, 'EEEE, MMMM d, yyyy') : sh.getName(),
+    forShort: sunday ? (isSunday ? '' : 'week of ') + fmt(sunday, 'EEEE, MMM d, yyyy') : sh.getName(),
+    reportDate: isSunday || !sunday ? '' : fmt(date, 'EEEE, MMMM d, yyyy'),
+    fileDate: sunday ? fmt(sunday, 'yyyy-MM-dd') : sh.getName(),
     coins: items('A9:E14'),
     bills: items('A20:E26'),
     checks: { count: checkCount, counted: Number(sh.getRange('H27').getValue()) || 0, office: num(sh.getRange(OFFICE_CHECKS_CELL).getValue()) },
@@ -309,8 +315,9 @@ function reportHtml_(d) {
 
   // Header: logo | title
   h.push(table_('<tr>' + td_('<p style="margin:0">[[LOGO]]</p>', 'width:200pt;vertical-align:middle;padding-bottom:8pt;border-bottom:3pt solid ' + C_BRAND) +
-    td_('<p style="margin:0;text-align:right;font-size:17pt;font-weight:bold">OFFERING REPORT</p>' +
-      '<p style="margin:0;text-align:right;color:' + C_MUTED + '">' + esc_(d.longDate) + '</p>',
+    td_('<p style="margin:0;text-align:right;font-size:11pt;font-weight:bold;color:' + C_DEEP + ';letter-spacing:1px">OFFERING REPORT</p>' +
+      '<p style="margin:0;text-align:right;font-size:' + (d.reportDate ? 15 : 18) + 'pt;font-weight:bold">' + esc_(d.forLabel) + '</p>' +
+      (d.reportDate ? '<p style="margin:0;text-align:right;font-size:8.5pt;color:' + C_MUTED + '">Report dated ' + esc_(d.reportDate) + '</p>' : ''),
       'width:326pt;vertical-align:middle;padding-bottom:8pt;border-bottom:3pt solid ' + C_BRAND) + '</tr>', W));
   h.push('<p style="margin:0;font-size:6pt">&nbsp;</p>');
 
@@ -403,7 +410,8 @@ function reportHtml_(d) {
 function emailText_(d, updated) {
   const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
   return [
-    (updated ? 'Updated offering report for ' : 'Offering report for ') + d.longDate,
+    (updated ? 'Updated offering report for ' : 'Offering report for ') + d.forLabel +
+      (d.reportDate ? ' (report dated ' + d.reportDate + ')' : ''),
     '',
     'Offering: ' + usd_(d.offering),
     'Online giving: ' + usd_(d.online === null ? 0 : d.online) + (d.onlineNote ? ' (' + d.onlineNote + ')' : ''),
@@ -429,8 +437,8 @@ function emailHtml_(d, updated) {
     : '<span style="color:' + C_DIFF + ';font-weight:bold">The business office count differs from the counters by ' +
       diff_(d.office[3], d.counted[3]) + '.</span>';
   return '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1A1A1A">' +
-    '<p style="margin:0 0 4px;color:' + C_MUTED + '">' + (updated ? 'Updated offering report' : 'Offering report') + ' &middot; ' +
-    esc_(d.longDate) + '</p>' +
+    '<p style="margin:0 0 4px;color:' + C_MUTED + '">' + (updated ? 'Updated offering report for ' : 'Offering report for ') +
+    '<b style="color:#1A1A1A">' + esc_(d.forLabel) + '</b>' + (d.reportDate ? ' (report dated ' + esc_(d.reportDate) + ')' : '') + '</p>' +
     '<p style="margin:0 0 12px;font-size:32px;font-weight:bold;color:' + C_DEEP + '">' + usd_(d.totalGiving) +
     ' <span style="font-size:14px;font-weight:normal;color:' + C_MUTED + '">total giving</span></p>' +
     '<table style="border-collapse:collapse;margin-bottom:12px">' +

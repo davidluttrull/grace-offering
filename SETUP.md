@@ -72,6 +72,7 @@ Send the business office <https://davidluttrull.github.io/grace-offering/office.
 
 ## How it works: counters
 
+- **Date:** the page starts on the most recent Sunday, so a count finished on Monday is still filed under that Sunday. Counters can change it for an offering from another day.
 - **Coins and bills:** counters type how many of each. The page shows each amount and the totals as they go.
 - **Checks:** counters type each check's amount. A new box appears whenever the last one is filled in, and the **×** button removes a check. The report has room for 34 checks. If there are more, add the rest to the tab by hand.
 - **Designations:** every Sunday School class and designation in the lists has its own box. **+ Add class** and **+ Add designation** add up to 10 more of each, with a name and an amount. A note at the top of the section says these amounts are not added to the Total Offering.
@@ -101,7 +102,7 @@ Send the business office <https://davidluttrull.github.io/grace-offering/office.
 
 ## Emailed reports
 
-When the business office saves a verification, the script emails a one-page PDF to everyone on the **Report Emails** tab. The report shows Total Giving, the verified offering, online giving, and whether the office's count matches the counters'. It also has the counted and office figures side by side, the coins and bills, the checks total, the designations that have an amount, and who counted and verified. The email itself shows the offering, online giving, and Total Giving, so staff can see the numbers without opening the attachment.
+When the business office saves a verification, the script emails a one-page PDF to everyone on the **Report Emails** tab. The report and the email subject lead with the Sunday the offering is for. If a report's date isn't a Sunday, they say "Week of Sunday …" and show the report's own date below it. The report shows Total Giving, the verified offering, online giving, and whether the office's count matches the counters'. It also has the counted and office figures side by side, the coins and bills, the checks total, the designations that have an amount, and who counted and verified. The email itself shows the offering, online giving, and Total Giving, so staff can see the numbers without opening the attachment.
 
 To stop the emails, clear the addresses on the Report Emails tab.
 
