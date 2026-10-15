@@ -7,8 +7,8 @@ The next day, the business office opens a second page, picks the report, and ent
 It has three parts:
 
 - **The Sheet and its script** (`Code.gs` and `Report.gs`). The script lives inside the Google Sheet. It builds a **Template** tab that looks like the offering report, then copies it for each report and fills it in. `Report.gs` builds and emails the PDF report.
-- **The counters' page** (`index.html`, plus the logo, icons, and `manifest.webmanifest`). It's hosted on GitHub Pages at <https://davidluttrull.github.io/grace-offering/>.
-- **The business office's page** (`office.html` and `office.webmanifest`), at <https://davidluttrull.github.io/grace-offering/office.html>.
+- **The counters' page** (`index.html`, plus the logo, icons, and `manifest.webmanifest`). It's hosted on GitHub Pages at <https://davidluttrull.github.io/grace-offering/>. The church site forwards <https://gracetoanderson.com/offeringcount> there, and that's the address counters use.
+- **The business office's page** (`office.html` and `office.webmanifest`), at <https://davidluttrull.github.io/grace-offering/office.html>. The church site forwards <https://gracetoanderson.com/offeringverification> there.
 
 The pages talk to the script without any Google sign-in, so nobody needs a Google account. Instead, each page asks for a code once per device:
 
@@ -63,12 +63,12 @@ This only needs to be done once. Deploying a new version of the script later kee
 
 ## 6. Put it on the counters' phones
 
-Send the counters <https://davidluttrull.github.io/grace-offering/> and the counter code. Each counter should save the page to their home screen. It shows up as **Offering** with the Grace cross icon.
+Send the counters <https://gracetoanderson.com/offeringcount> and the counter code. Each counter should save the page to their home screen. It shows up as **Offering** with the Grace cross icon.
 
 - **iPhone:** open the link in Safari, tap the Share button, then tap **Add to Home Screen**.
 - **Android:** open the link in Chrome, tap **⋮**, then tap **Add to Home screen** (or **Install app**).
 
-Send the business office <https://davidluttrull.github.io/grace-offering/office.html> and the business office code. It works on a computer or a phone. On a phone it can be saved to the home screen the same way, and shows up as **Verify**.
+Send the business office <https://gracetoanderson.com/offeringverification> and the business office code. It works on a computer or a phone. On a phone it can be saved to the home screen the same way, and shows up as **Verify**.
 
 ## How it works: counters
 
