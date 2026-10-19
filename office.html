@@ -168,35 +168,6 @@
   @media (max-width: 420px) { table.totals { font-size: 14px; } table.totals th { font-size: 11px; } }
   table.totals td.diff { color: var(--diff); font-weight: 600; }
   table.totals td.match { color: var(--match); }
-  table.totals tr.aside td { color: var(--muted); font-size: 14px; }
-
-  /* Cash Unaccounted: note, amount, remove */
-  .cash-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 116px 46px;
-    gap: 8px;
-    align-items: center;
-    padding: 5px 0;
-  }
-  .icon-btn {
-    width: 46px; height: 46px;
-    border-radius: 12px;
-    border: 1px solid var(--step-line);
-    background: var(--step-bg);
-    color: var(--step-ink);
-    font-size: 22px;
-    line-height: 1;
-  }
-  .add {
-    width: 100%;
-    min-height: 46px;
-    margin-top: 8px;
-    border-radius: 12px;
-    border: 1px dashed var(--step-line);
-    background: transparent;
-    color: var(--step-ink);
-    font-weight: 600;
-  }
 
   .notice {
     margin: 10px 0 0;
@@ -386,10 +357,11 @@
       </section>
 
       <section class="card" id="cashCard">
-        <div class="card-head"><h2>Cash Unaccounted</h2><span class="sub" id="cashSum">$0.00</span></div>
-        <p class="hint">Cash given after the count, such as an envelope handed to the office later in the week. It’s recorded on the report but not added to the totals.</p>
-        <div id="cash"></div>
-        <button type="button" class="add" id="addCash">+ Add cash</button>
+        <h2>Cash Unaccounted</h2>
+        <label class="field">
+          <span>Amount</span>
+          <div class="dollar"><input id="cash" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+        </label>
       </section>
 
       <section class="card">
@@ -430,7 +402,6 @@
 
   const CODE_KEY = 'gbc-office-code';
   const NAME_KEY = 'gbc-office-name';
-  const MAX_CASH = 10;
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -604,28 +575,6 @@
     box.appendChild(sum);
   }
 
-  function addCash(note, amount) {
-    const box = $('#cash');
-    if (box.children.length >= MAX_CASH) return null;
-    const row = document.createElement('div');
-    row.className = 'cash-row';
-    row.innerHTML = '<input type="text" maxlength="100" placeholder="Who gave it or what it’s for" aria-label="Note" data-cash="note" autocomplete="off">' +
-      '<div class="dollar"><input class="num" type="text" inputmode="decimal" placeholder="0.00" aria-label="Amount" data-cash="amount" autocomplete="off"></div>' +
-      '<button type="button" class="icon-btn" data-remove-cash aria-label="Remove">&times;</button>';
-    row.querySelector('[data-cash="note"]').value = note || '';
-    row.querySelector('[data-cash="amount"]').value = moneyValue(amount);
-    box.appendChild(row);
-    $('#addCash').hidden = box.children.length >= MAX_CASH;
-    return row.querySelector('input');
-  }
-
-  function cashLines() {
-    return $$('#cash .cash-row').map((row) => ({
-      note: row.querySelector('[data-cash="note"]').value.trim(),
-      amount: row.querySelector('[data-cash="amount"]').value,
-    })).filter((c) => c.note || c.amount);
-  }
-
   function render() {
     ['#coins', '#bills', '#checks'].forEach((t) => { $(t).innerHTML = ''; });
     report.coins.forEach((c) => line('#coins', 'coin:' + c.name, c.name, c.quantity ? c.quantity + ' counted' : '', Math.round(c.counted * 100), c.office));
@@ -634,11 +583,9 @@
     line('#checks', 'checks', 'Checks total', n + (n === 1 ? ' check' : ' checks') + ' counted', Math.round(report.checks.counted * 100), report.checks.office);
     // A script older than these sections doesn't send them, and wouldn't save them.
     $('#desCard').hidden = !report.designations;
-    $('#cashCard').hidden = !report.cash;
+    $('#cashCard').hidden = !('cash' in report);
     if (report.designations) renderDesignations();
-    $('#cash').innerHTML = '';
-    (report.cash || []).forEach((c) => addCash(c.note, c.amount));
-    $('#addCash').hidden = $('#cash').children.length >= MAX_CASH;
+    $('#cash').value = moneyValue(report.cash);
     $('#online').value = moneyValue(report.online);
     $('#onlineNote').value = report.onlineNote || '';
     $('#verifier').value = store((s) => s.getItem(NAME_KEY)) || '';
@@ -677,6 +624,7 @@
     office.push(office[0] + office[1] + office[2]);
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
     const online = cents($('#online').value) || 0;
+    const cash = cents($('#cash').value) || 0;
     $('#totals').innerHTML = names.map((name, i) => {
       const c = Math.round(counted[i] * 100);
       const d = office[i] - c;
@@ -684,10 +632,8 @@
         '</td><td class="' + (d === 0 ? 'match' : 'diff') + '">' + (d === 0 ? '✓' : diffText(d)) + '</td></tr>';
     }).join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online) + '</td><td></td></tr>';
-    const cash = cashLines().reduce((t, c) => t + (cents(c.amount) || 0), 0);
-    if (cash) $('#totals').insertAdjacentHTML('beforeend', '<tr class="aside"><td>Cash unaccounted (not added)</td><td></td><td>' + usd(cash) + '</td><td></td></tr>');
-    $('#cashSum').textContent = usd(cash);
+      '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash) + '</td><td></td></tr>';
     if (report.designations) {
       const desCounted = report.designations.reduce((t, g) => t + g.items.reduce((s, x) => s + Math.round((x.amount || 0) * 100), 0), 0);
       const desNote = $('#desNote');
@@ -706,7 +652,7 @@
 
   function collect() {
     const office = { coins: {}, bills: {}, checks: '', online: $('#online').value, onlineNote: $('#onlineNote').value.trim(),
-      designations: {}, cash: cashLines() };
+      designations: {}, cash: $('#cash').value };
     $$('#view input[data-key]').forEach((input) => {
       const [kind, name] = input.dataset.key.split(':');
       if (kind === 'coin') office.coins[name] = input.value;
@@ -755,8 +701,8 @@
     return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
       names.map((n, i) => '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + n + '</td><td>' + usd(counted[i]) + '</td><td>' + usd(office[i]) + '</td></tr>').join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td></tr>' +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online) + '</td></tr>' +
-      (cash ? '<tr class="aside"><td>Cash unaccounted (not added)</td><td></td><td>' + usd(cash) + '</td></tr>' : '') +
+      '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td></tr>' +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash) + '</td></tr>' +
       '</tbody></table>';
   }
 
@@ -775,13 +721,6 @@
     if (!verifier) {
       toast('Enter your name under Verified By.');
       $('#verifier').focus();
-      return;
-    }
-    const cash = $$('#cash .cash-row').find((row) => !row.querySelector('[data-cash="note"]').value.trim() !== !row.querySelector('[data-cash="amount"]').value);
-    if (cash) {
-      const noNote = !cash.querySelector('[data-cash="note"]').value.trim();
-      toast(noNote ? 'Add a note for the cash unaccounted: who gave it or what it’s for.' : 'Enter the amount for the cash unaccounted.');
-      cash.querySelector(noNote ? '[data-cash="note"]' : '[data-cash="amount"]').focus();
       return;
     }
     $('#toast').hidden = true;
@@ -817,13 +756,13 @@
       check: true,
       title: 'Verification saved',
       body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100)), Math.round((res.online || 0) * 100),
-        Math.round((res.cashTotal || 0) * 100)) +
+        Math.round((res.cash || 0) * 100)) +
         '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>' + emailNote(res.emailed) +
         // An older script ignores online giving and doesn't email; it doesn't send totalGiving back.
         (res.totalGiving === undefined
           ? '<p><b>The online giving wasn’t saved</b> because the script in the Sheet hasn’t been updated yet. ' +
             'Once it’s updated, save this verification again.</p>'
-          : res.cashTotal === undefined
+          : res.cash === undefined
             ? '<p><b>The designations and cash unaccounted weren’t saved</b> because the script in the Sheet hasn’t been updated yet. ' +
               'Once it’s updated, save this verification again.</p>'
             : ''),
@@ -836,8 +775,7 @@
 
   document.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.matches('[data-cash="note"]')) { recalc(); return; }
-    if (!t.matches('#view input[data-key], #online, [data-cash="amount"]')) return;
+    if (!t.matches('#view input[data-key], #online, #cash')) return;
     // Digits and one decimal point, at most two places.
     let clean = t.value.replace(/[^\d.]/g, '');
     const dot = clean.indexOf('.');
@@ -859,14 +797,6 @@
   $('#tab').addEventListener('change', () => loadReport($('#tab').value));
   $('#reload').addEventListener('click', () => loadList($('#tab').value));
   $('#save').addEventListener('click', save);
-  $('#addCash').addEventListener('click', () => { const input = addCash(); if (input) input.focus(); });
-  $('#cash').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove-cash]');
-    if (!btn) return;
-    btn.parentNode.remove();
-    $('#addCash').hidden = false;
-    recalc();
-  });
 
   if (store((s) => s.getItem(CODE_KEY))) loadList();
   else showCode();

@@ -134,7 +134,7 @@ function reportData_(sh, tz) {
   const date = sh.getRange(DATE_CELL).getValue();
   const online = num(sh.getRange(ONLINE_CELL).getValue());
   const offering = verifiedBy ? Number(totals[3][1]) || 0 : Number(totals[3][0]) || 0;
-  const cash = readOfficeExtras_(sh).cash;
+  const cash = verifiedBy ? readOfficeExtras_(sh).cash || 0 : 0;
   const fmt = function (d, p) { return d instanceof Date ? Utilities.formatDate(d, tz, p) : ''; };
   // The Sunday this offering belongs to: the report date, or the Sunday before it.
   // ('u' is the ISO day number, 1 = Monday ... 7 = Sunday.)
@@ -160,10 +160,9 @@ function reportData_(sh, tz) {
     online: online,
     onlineNote: String(sh.getRange(ONLINE_NOTE_CELL).getValue() || ''),
     offering: offering,
-    totalGiving: offering + (online || 0),
-    designations: designationsWithOffice_(sh),
     cash: cash,
-    cashTotal: Math.round(cash.reduce(function (t, c) { return t + c.amount * 100; }, 0)) / 100,
+    totalGiving: Math.round((offering + (online || 0) + cash) * 100) / 100,
+    designations: designationsWithOffice_(sh),
   };
   // How many designations the office's amount differs from the count on.
   out.desDiffs = !verifiedBy ? 0 : out.designations.reduce(function (n, g) {
@@ -350,7 +349,7 @@ function reportHtml_(d) {
       ? tile('COUNT CHECK', 'Matches', 'Office and counters agree', { width: 112, color: C_MATCH })
       : tile('COUNT CHECK', diff_(d.office[3], d.counted[3]), 'Office vs. counters', { width: 112, color: C_DIFF, bg: C_DIFF_BG });
   h.push(table_('<tr>' +
-    tile('TOTAL GIVING', usd_(d.totalGiving), 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
+    tile('TOTAL GIVING', usd_(d.totalGiving), d.cash ? 'Offering, online giving and cash unaccounted' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
     tile('OFFERING', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted', { width: 118 }) + gap +
     tile('ONLINE GIVING', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office', { width: 118 }) + gap +
     check + '</tr>', W));
@@ -367,6 +366,10 @@ function reportHtml_(d) {
   });
   vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
   vStyles.push(null);
+  if (d.cash) {
+    vRows.push(['Cash unaccounted', '', usd_(d.cash), '']);
+    vStyles.push(null);
+  }
   vRows.push(['<b>Total giving</b>', '', '<b>' + usd_(d.totalGiving) + '</b>', '']);
   vStyles.push('background:' + C_DEEP + ';color:#ffffff;font-weight:bold');
   h.push(grid_([{ label: '', width: 190 }, { label: 'COUNTED', width: 112, right: true },
@@ -422,20 +425,6 @@ function reportHtml_(d) {
     }
   }
 
-  // Cash the office was given after the count
-  if (d.verified) {
-    h.push(heading_('Cash Unaccounted'));
-    h.push(caption_('Cash given after the count, entered by the business office. It is not included in the offering or total giving.'));
-    if (!d.cash.length) {
-      h.push('<p style="margin:0;font-size:9pt;color:' + C_MUTED + '">None recorded.</p>');
-    } else {
-      const rows = d.cash.map(function (c) { return [esc_(c.note), usd_(c.amount)]; });
-      rows.push(['<b>Total</b>', '<b>' + usd_(d.cashTotal) + '</b>']);
-      const styles = d.cash.map(function () { return null; }).concat(['background:' + C_TINT]);
-      h.push(grid_([{ label: 'NOTE', width: 446 }, { label: 'AMOUNT', width: 80, right: true }], rows, { styles: styles }));
-    }
-  }
-
   // Who counted and who verified
   const people = 'Counted by ' + (d.counters.join(', ') || 'no names given') + '. ' +
     (d.verified ? 'Verified by ' + d.verifiedBy + (d.verifiedOn ? ' on ' + d.verifiedOn : '') + '.' : 'Not verified yet.');
@@ -456,8 +445,8 @@ function emailText_(d, updated) {
     '',
     'Offering: ' + usd_(d.offering),
     'Online giving: ' + usd_(d.online === null ? 0 : d.online) + (d.onlineNote ? ' (' + d.onlineNote + ')' : ''),
+  ].concat(d.cash ? ['Cash unaccounted: ' + usd_(d.cash)] : [], [
     'Total giving: ' + usd_(d.totalGiving),
-  ].concat(d.cashTotal ? ['Cash unaccounted: ' + usd_(d.cashTotal) + ' (given after the count, not included above)'] : [], [
     '',
     !d.verified ? 'Not verified yet.'
       : totalDiff === 0 ? 'The business office count matches the counters.'
@@ -492,8 +481,8 @@ function emailHtml_(d, updated) {
     row('Offering', usd_(d.offering)) +
     row('Online giving' + (d.onlineNote ? ' <span style="color:' + C_MUTED + '">(' + esc_(d.onlineNote) + ')</span>' : ''),
       usd_(d.online === null ? 0 : d.online)) +
+    (d.cash ? row('Cash unaccounted', usd_(d.cash)) : '') +
     row('Total giving', usd_(d.totalGiving), true) +
-    (d.cashTotal ? row('Cash unaccounted <span style="color:' + C_MUTED + '">(given after the count, not included above)</span>', usd_(d.cashTotal)) : '') +
     '</table>' +
     '<p style="margin:0 0 8px">' + status + '</p>' +
     (d.desDiffs ? '<p style="margin:0 0 8px;color:' + C_DIFF + ';font-weight:bold">' + desDiffText_(d.desDiffs) + '</p>' : '') +

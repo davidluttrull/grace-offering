@@ -11,8 +11,8 @@
  * it lists the report tabs, shows the counters' figures, and saves the
  * office's own figures into the "Business Office Only" cells, plus the week's
  * online giving. Below the Designations it adds the office's amount for each
- * designation and any cash given after the count ("Cash Unaccounted"). Saving
- * also emails a PDF report to the staff (Report.gs).
+ * designation and any cash given after the count ("Cash Unaccounted"), which
+ * Total Giving includes. Saving also emails a PDF report to the staff (Report.gs).
  * See SETUP.md for how to deploy it.
  *
  * Every cell address below matches the church's offering report layout. If
@@ -89,13 +89,12 @@ const TOTAL_GIVING_CELL = 'D36';
 const OFFICE_CELLS = [OFFICE_COIN_RANGE, OFFICE_BILL_RANGE, OFFICE_CHECKS_CELL, VERIFIER_CELL, VERIFIED_DATE_CELL,
   ONLINE_CELL, ONLINE_NOTE_CELL];
 // Below the counters' Designations section, verifying adds the office's own
-// designation amounts and any cash given after the count. Each verification
-// rewrites everything from the first of these titles down.
+// designation amounts and the cash given after the count (its own row, in D,
+// which Total Giving adds in). Each verification rewrites everything from the
+// first of these titles down.
 const OFFICE_DES_TITLE = 'Designations: Business Office';
 const CASH_TITLE = 'Cash Unaccounted';
 const DES_TOTAL_LABEL = 'Designations total';
-const CASH_TOTAL_LABEL = 'Cash unaccounted total';
-const MAX_CASH = 10;
 const MAX_LISTED_REPORTS = 25;
 
 const MAX_COUNT = 100000;
@@ -506,18 +505,19 @@ function officeExtrasRow_(sh) {
 /**
  * Reads back what writeOfficeExtras_ wrote: the office's designation amounts
  * as {groupTitle: [{label, amount}]} in report order, and the cash given after
- * the count as [{note, amount}].
+ * the count (null if none was entered).
  */
 function readOfficeExtras_(sh) {
-  const out = { designations: {}, cash: [] };
+  const out = { designations: {}, cash: null };
   const start = officeExtrasRow_(sh);
   if (!start) return out;
   const rows = sh.getRange(start, 1, sh.getLastRow() - start + 1, 4).getValues();
   let section = '', group = null;
   rows.forEach(function (v) {
     const a = String(v[0] || '').trim();
-    if (a === OFFICE_DES_TITLE || a === CASH_TITLE) { section = a; return; }
-    if (!a || a === DES_TOTAL_LABEL || a === CASH_TOTAL_LABEL) return;
+    if (a === CASH_TITLE) { out.cash = v[3] === '' || v[3] === null ? null : Number(v[3]); section = a; return; }
+    if (a === OFFICE_DES_TITLE) { section = a; return; }
+    if (!a || a === DES_TOTAL_LABEL) return;
     if (v[2] === 'Counted' || v[3] === 'Amount') return;   // column headings
     const amount = v[3] === '' || v[3] === null ? null : Number(v[3]);
     if (section === OFFICE_DES_TITLE) {
@@ -526,8 +526,6 @@ function readOfficeExtras_(sh) {
       } else if (group) {
         group.push({ label: a, amount: amount });
       }
-    } else if (section === CASH_TITLE && amount !== null) {
-      out.cash.push({ note: a, amount: amount });
     }
   });
   return out;
@@ -536,7 +534,8 @@ function readOfficeExtras_(sh) {
 /**
  * Lays out the office's section below the counters' Designations: each
  * designation with the counted amount, the office's amount and the difference,
- * then the cash given after the count. Replaces what an earlier verification wrote.
+ * then the cash given after the count, which Total Giving (D36) adds in.
+ * Replaces what an earlier verification wrote.
  */
 function writeOfficeExtras_(sh, groups, cash) {
   const GRAY = '#D9D9D9';
@@ -594,26 +593,16 @@ function writeOfficeExtras_(sh, groups, cash) {
   money(3, 3);
   row += 2;
 
-  // Cash given after the count: note in A:C, amount in D.
-  title(CASH_TITLE);
-  range(1, 8).merge().setValue('Cash given after the count. It is not included in the Total Offering or Total Giving.')
-    .setFontFamily('Arial').setFontSize(9).setFontStyle('italic').setHorizontalAlignment('center');
-  row++;
-  heading(4, 3, [[1, 'Note'], [4, 'Amount']]);
-  const cashFirst = row;
-  (cash.length ? cash : [{ note: 'None recorded', amount: '' }]).forEach(function (c) {
-    range(1, 3).merge();
-    style(4);
-    range(1).setValue(c.note).setHorizontalAlignment('left').setWrap(true);
-    range(4).setValue(c.amount);
-    money(4);
-    row++;
-  });
+  // Cash given after the count: label in A:C, amount in D.
   range(1, 3).merge();
-  style(4).setBackground(GRAY).setFontWeight('bold');
-  range(1).setValue(CASH_TOTAL_LABEL).setHorizontalAlignment('left');
-  range(4).setFormula('=SUM(D' + cashFirst + ':D' + (row - 1) + ')');
+  style(4);
+  range(1, 3).setBackground(GRAY).setFontWeight('bold');
+  range(1).setValue(CASH_TITLE).setHorizontalAlignment('left');
+  range(4).setValue(cash);
   money(4);
+  sh.setRowHeight(row, 27);
+  sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+N(D' + row + ')')
+    .setNote('Total Offering + Online Giving + Cash Unaccounted (D' + row + ').');
 }
 
 /**
@@ -629,7 +618,7 @@ function verifyReport_(body) {
   const checks = money_(office.checks, 'checks');
   const online = money_(office.online, 'online giving');
   const onlineNote = clean_(office.onlineNote, 100);
-  const cash = cashEntries_(office.cash);
+  const cash = cashAmount_(office.cash);
 
   let sh, result, wasVerified;
   const lock = LockService.getScriptLock();
@@ -676,7 +665,7 @@ function verifyReport_(body) {
       office: t.map(function (r) { return Number(r[1]) || 0; }),
       online: online === '' ? 0 : online,
       totalGiving: Number(sh.getRange(TOTAL_GIVING_CELL).getValue()) || 0,
-      cashTotal: Math.round(cash.reduce(function (t, c) { return t + c.amount * 100; }, 0)) / 100,
+      cash: cash === '' ? 0 : cash,
     };
   } finally {
     lock.releaseLock();
@@ -690,19 +679,11 @@ function verifyReport_(body) {
   return result;
 }
 
-/** The office's Cash Unaccounted lines as [{note, amount}], skipping empty ones. */
-function cashEntries_(list) {
-  const cash = [];
-  (list || []).slice(0, MAX_CASH + 1).forEach(function (c) {
-    const note = clean_(c && c.note, 100);
-    const amount = money_(c && c.amount, 'cash unaccounted' + (note ? ' (' + note + ')' : ''));
-    if (amount === '' && !note) return;
-    if (amount === '') throw new Error('Enter the amount for the cash unaccounted "' + note + '".');
-    if (!note) throw new Error('Add a note for the cash unaccounted of $' + amount.toFixed(2) + ': who gave it or what it\'s for.');
-    cash.push({ note: note, amount: amount });
-  });
-  if (cash.length > MAX_CASH) throw new Error('You can add up to ' + MAX_CASH + ' cash unaccounted lines.');
-  return cash;
+/** The office's Cash Unaccounted amount. (A page from before it was one box sent a list of lines.) */
+function cashAmount_(value) {
+  if (!Array.isArray(value)) return money_(value, 'cash unaccounted');
+  const total = value.reduce(function (t, c) { return t + (Number(money_(c && c.amount, 'cash unaccounted')) || 0) * 100; }, 0);
+  return total ? Math.round(total) / 100 : '';
 }
 
 /** "Oct 12, 2026", or "Oct 12, 2026 (2)" if that tab already exists. */
