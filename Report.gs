@@ -134,13 +134,14 @@ function reportData_(sh, tz) {
   const date = sh.getRange(DATE_CELL).getValue();
   const online = num(sh.getRange(ONLINE_CELL).getValue());
   const offering = verifiedBy ? Number(totals[3][1]) || 0 : Number(totals[3][0]) || 0;
+  const cash = readOfficeExtras_(sh).cash;
   const fmt = function (d, p) { return d instanceof Date ? Utilities.formatDate(d, tz, p) : ''; };
   // The Sunday this offering belongs to: the report date, or the Sunday before it.
   // ('u' is the ISO day number, 1 = Monday ... 7 = Sunday.)
   const isSunday = date instanceof Date && fmt(date, 'u') === '7';
   const sunday = date instanceof Date ? new Date(date.getTime() - (Number(fmt(date, 'u')) % 7) * 86400000) : null;
 
-  return {
+  const out = {
     tab: sh.getName(),
     // "Sunday, October 11, 2026", or "Week of Sunday, ..." when the report date isn't a Sunday
     forLabel: sunday ? (isSunday ? '' : 'Week of ') + fmt(sunday, 'EEEE, MMMM d, yyyy') : sh.getName(),
@@ -160,15 +161,27 @@ function reportData_(sh, tz) {
     onlineNote: String(sh.getRange(ONLINE_NOTE_CELL).getValue() || ''),
     offering: offering,
     totalGiving: offering + (online || 0),
-    designations: readDesignations_(sh),
+    designations: designationsWithOffice_(sh),
+    cash: cash,
+    cashTotal: Math.round(cash.reduce(function (t, c) { return t + c.amount * 100; }, 0)) / 100,
   };
+  // How many designations the office's amount differs from the count on.
+  out.desDiffs = !verifiedBy ? 0 : out.designations.reduce(function (n, g) {
+    return n + g.items.filter(function (x) {
+      return x.office !== null && Math.round(x.office * 100) !== Math.round((x.amount || 0) * 100);
+    }).length;
+  }, 0);
+  return out;
 }
 
-/** The Designations section as [{title, items: [{label, amount}]}], read back from the tab. */
+/** The counters' Designations section as [{title, items: [{label, amount}]}], read back from the tab. */
 function readDesignations_(sh) {
   const last = sh.getLastRow();
   if (last < DESIGNATIONS_ROW) return [];
-  const rows = sh.getRange(DESIGNATIONS_ROW, 1, last - DESIGNATIONS_ROW + 1, 6).getValues();
+  // The office's section, when there is one, starts below the counters' rows.
+  const end = officeExtrasRow_(sh) || last + 1;
+  if (end <= DESIGNATIONS_ROW) return [];
+  const rows = sh.getRange(DESIGNATIONS_ROW, 1, end - DESIGNATIONS_ROW, 6).getValues();
   const groups = [];
   rows.forEach(function (v) {
     if (DESIGNATION_TITLES.indexOf(String(v[0])) > -1) {
@@ -373,25 +386,53 @@ function reportHtml_(d) {
   h.push('<p style="margin:8pt 0 0;font-size:9pt"><b>Checks:</b> ' + d.checks.count + (d.checks.count === 1 ? ' check' : ' checks') +
     ' counted, totaling ' + usd_(d.checks.counted) + '. Office checks total: ' + usd_(d.checks.office) + '.</p>');
 
-  // Designations side by side, listing only the ones that have an amount
+  // Designations side by side, listing only the ones that have an amount.
+  // Once verified, each shows the office's amount beside the count.
   if (d.designations.length) {
     h.push(heading_('Designations'));
-    h.push(caption_('Amounts in this section are not added to the Total Offering. Only designations with an amount are listed.'));
+    h.push(caption_('Amounts in this section are not added to the Total Offering. Only designations with an amount are listed.' +
+      (d.verified ? ' Amber office amounts differ from the count.' : '')));
+    const amount = function (v) { return v === null ? '<span style="color:#AAAAAA">—</span>' : usd_(v); };
+    const officeCell = function (x) {
+      if (x.office === null) return amount(null);
+      return Math.round(x.office * 100) === Math.round((x.amount || 0) * 100) ? usd_(x.office)
+        : '<span style="color:' + C_DIFF + ';font-weight:bold">' + usd_(x.office) + '</span>';
+    };
     const col = function (g) {
       if (!g) return td_('', 'width:255pt');
-      const given = g.items.filter(function (x) { return x.amount !== null; });
+      const given = g.items.filter(function (x) { return x.amount !== null || (d.verified && x.office !== null); });
       const title = '<p style="margin:4pt 0 2pt;font-size:9.5pt;font-weight:bold">' + esc_(g.title) + '</p>';
       if (!given.length) {
         return td_(title + '<p style="margin:0;font-size:9pt;color:' + C_MUTED + '">None this week.</p>', 'width:255pt');
       }
-      const total = given.reduce(function (t, x) { return t + x.amount; }, 0);
-      const rows = given.map(function (x) { return [esc_(x.label), usd_(x.amount)]; });
-      rows.push(['<b>Total</b>', '<b>' + usd_(total) + '</b>']);
+      const sum = function (key) { return given.reduce(function (t, x) { return t + Math.round((x[key] || 0) * 100); }, 0) / 100; };
       const styles = given.map(function () { return null; }).concat(['background:' + C_TINT]);
-      return td_(title + grid_([{ label: 'NAME', width: 175 }, { label: 'AMOUNT', width: 80, right: true }], rows, { styles: styles }), 'width:255pt');
+      if (!d.verified) {
+        const rows = given.map(function (x) { return [esc_(x.label), usd_(x.amount)]; });
+        rows.push(['<b>Total</b>', '<b>' + usd_(sum('amount')) + '</b>']);
+        return td_(title + grid_([{ label: 'NAME', width: 175 }, { label: 'AMOUNT', width: 80, right: true }], rows, { styles: styles }), 'width:255pt');
+      }
+      const rows = given.map(function (x) { return [esc_(x.label), amount(x.amount), officeCell(x)]; });
+      rows.push(['<b>Total</b>', '<b>' + usd_(sum('amount')) + '</b>', '<b>' + officeCell({ amount: sum('amount'), office: sum('office') }) + '</b>']);
+      return td_(title + grid_([{ label: 'NAME', width: 125 }, { label: 'COUNTED', width: 65, right: true },
+        { label: 'OFFICE', width: 65, right: true }], rows, { styles: styles }), 'width:255pt');
     };
     for (let i = 0; i < d.designations.length; i += 2) {
       h.push(table_('<tr>' + col(d.designations[i]) + td_('', 'width:16pt') + col(d.designations[i + 1]) + '</tr>', W));
+    }
+  }
+
+  // Cash the office was given after the count
+  if (d.verified) {
+    h.push(heading_('Cash Unaccounted'));
+    h.push(caption_('Cash given after the count, entered by the business office. It is not included in the offering or total giving.'));
+    if (!d.cash.length) {
+      h.push('<p style="margin:0;font-size:9pt;color:' + C_MUTED + '">None recorded.</p>');
+    } else {
+      const rows = d.cash.map(function (c) { return [esc_(c.note), usd_(c.amount)]; });
+      rows.push(['<b>Total</b>', '<b>' + usd_(d.cashTotal) + '</b>']);
+      const styles = d.cash.map(function () { return null; }).concat(['background:' + C_TINT]);
+      h.push(grid_([{ label: 'NOTE', width: 446 }, { label: 'AMOUNT', width: 80, right: true }], rows, { styles: styles }));
     }
   }
 
@@ -416,14 +457,20 @@ function emailText_(d, updated) {
     'Offering: ' + usd_(d.offering),
     'Online giving: ' + usd_(d.online === null ? 0 : d.online) + (d.onlineNote ? ' (' + d.onlineNote + ')' : ''),
     'Total giving: ' + usd_(d.totalGiving),
+  ].concat(d.cashTotal ? ['Cash unaccounted: ' + usd_(d.cashTotal) + ' (given after the count, not included above)'] : [], [
     '',
     !d.verified ? 'Not verified yet.'
       : totalDiff === 0 ? 'The business office count matches the counters.'
       : 'The business office count differs from the counters by ' + diff_(d.office[3], d.counted[3]) + '.',
+  ], d.desDiffs ? [desDiffText_(d.desDiffs)] : [], [
     'Counted by ' + (d.counters.join(', ') || 'no names given') + (d.verified ? '. Verified by ' + d.verifiedBy + '.' : '.'),
     '',
     'The full report is attached as a PDF.',
-  ].join('\n');
+  ]).join('\n');
+}
+
+function desDiffText_(n) {
+  return n + (n === 1 ? ' designation differs' : ' designations differ') + ' from the counters. See the attached report.';
 }
 
 function emailHtml_(d, updated) {
@@ -445,8 +492,11 @@ function emailHtml_(d, updated) {
     row('Offering', usd_(d.offering)) +
     row('Online giving' + (d.onlineNote ? ' <span style="color:' + C_MUTED + '">(' + esc_(d.onlineNote) + ')</span>' : ''),
       usd_(d.online === null ? 0 : d.online)) +
-    row('Total giving', usd_(d.totalGiving), true) + '</table>' +
+    row('Total giving', usd_(d.totalGiving), true) +
+    (d.cashTotal ? row('Cash unaccounted <span style="color:' + C_MUTED + '">(given after the count, not included above)</span>', usd_(d.cashTotal)) : '') +
+    '</table>' +
     '<p style="margin:0 0 8px">' + status + '</p>' +
+    (d.desDiffs ? '<p style="margin:0 0 8px;color:' + C_DIFF + ';font-weight:bold">' + desDiffText_(d.desDiffs) + '</p>' : '') +
     '<p style="margin:0 0 12px;color:' + C_MUTED + '">Counted by ' + esc_(d.counters.join(', ') || 'no names given') +
     (d.verified ? '. Verified by ' + esc_(d.verifiedBy) + '.' : '.') + '</p>' +
     '<p style="margin:0">The full report is attached as a PDF.</p></div>';
