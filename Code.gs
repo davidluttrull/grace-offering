@@ -474,15 +474,19 @@ function getReport_(tab) {
   };
 }
 
-/** The counters' designations, each with the office's amount beside it (null until verified). */
+/**
+ * The counters' designations, each with the office's amount beside it (null
+ * until verified). Matched by position, since two can share a name (a listed
+ * "Missions" and one the counters added).
+ */
 function designationsWithOffice_(sh) {
   const office = readOfficeExtras_(sh).designations;
   return readDesignations_(sh).map(function (g) {
-    const saved = office[g.title] || {};
+    const saved = office[g.title] || [];
     return {
       title: g.title,
-      items: g.items.map(function (x) {
-        return { label: x.label, amount: x.amount, office: saved.hasOwnProperty(x.label) ? saved[x.label] : null };
+      items: g.items.map(function (x, i) {
+        return { label: x.label, amount: x.amount, office: saved[i] && saved[i].label === x.label ? saved[i].amount : null };
       }),
     };
   });
@@ -501,8 +505,8 @@ function officeExtrasRow_(sh) {
 
 /**
  * Reads back what writeOfficeExtras_ wrote: the office's designation amounts
- * as {groupTitle: {label: amount}}, and the cash given after the count as
- * [{note, amount}].
+ * as {groupTitle: [{label, amount}]} in report order, and the cash given after
+ * the count as [{note, amount}].
  */
 function readOfficeExtras_(sh) {
   const out = { designations: {}, cash: [] };
@@ -518,9 +522,9 @@ function readOfficeExtras_(sh) {
     const amount = v[3] === '' || v[3] === null ? null : Number(v[3]);
     if (section === OFFICE_DES_TITLE) {
       if (v[2] === '' && v[3] === '' && DESIGNATION_TITLES.indexOf(a) > -1) {
-        group = out.designations[a] = out.designations[a] || {};
+        group = out.designations[a] = out.designations[a] || [];
       } else if (group) {
-        group[a] = amount;
+        group.push({ label: a, amount: amount });
       }
     } else if (section === CASH_TITLE && amount !== null) {
       out.cash.push({ note: a, amount: amount });
@@ -641,14 +645,23 @@ function verifyReport_(body) {
     sh.getRange(ONLINE_NOTE_CELL).setValue(onlineNote);
     sh.getRange(VERIFIER_CELL).setValue(verifier);
     sh.getRange(VERIFIED_DATE_CELL).setValue(new Date());
-    // The office's amount for each designation the counters' section lists.
+    // The office's amount for each designation the counters' section lists,
+    // in the same order. The page sends [{label, amount}] per group (an older
+    // page sent {label: amount}, which can't tell two of the same name apart).
     const desOffice = office.designations || {};
     const groups = readDesignations_(sh).map(function (g) {
-      const amounts = desOffice[g.title] || {};
+      const sent = desOffice[g.title] || {};
       return {
         title: g.title,
-        items: g.items.map(function (x) {
-          const v = money_(amounts[x.label], x.label);
+        items: g.items.map(function (x, i) {
+          let value = sent[x.label];
+          if (Array.isArray(sent)) {
+            if (sent[i] && sent[i].label !== x.label) {
+              throw new Error('The designations on this report changed after it was opened. Pick the report again and re-enter them.');
+            }
+            value = sent[i] && sent[i].amount;
+          }
+          const v = money_(value, x.label);
           return { label: x.label, amount: x.amount, office: v === '' ? null : v };
         }),
       };

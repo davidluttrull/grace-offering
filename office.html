@@ -711,7 +711,8 @@
       const [kind, name] = input.dataset.key.split(':');
       if (kind === 'coin') office.coins[name] = input.value;
       else if (kind === 'bill') office.bills[name] = input.value;
-      else if (kind === 'des') (office.designations[input.dataset.group] = office.designations[input.dataset.group] || {})[input.dataset.label] = input.value;
+      // In report order, as a list: two designations can share a name.
+      else if (kind === 'des') (office.designations[input.dataset.group] = office.designations[input.dataset.group] || []).push({ label: input.dataset.label, amount: input.value });
       else office.checks = input.value;
     });
     return office;
