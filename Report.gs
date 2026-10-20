@@ -302,7 +302,7 @@ function reportHtml_(d, updated) {
   const T = THEME;
   const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
   const out = [];
-  const preview = usd_(d.totalGiving) + ' total giving · general fund ' + usd_(d.week.subtotal) +
+  const preview = 'General fund ' + usd_(d.week.subtotal) + ' · ' + usd_(d.totalGiving) + ' total giving' +
     (d.verified ? (totalDiff === 0 ? ' · count matches' : ' · count differs by ' + diff_(d.office[3], d.counted[3])) : ' · not verified');
 
   out.push('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -323,31 +323,74 @@ function reportHtml_(d, updated) {
     (d.reportDate ? '<p style="' + FONT + 'margin:2px 0 0;font-size:12px;color:#CFE3C0">Report dated ' + esc_(d.reportDate) + '</p>' : '') +
     '</td></tr>');
 
-  // Total giving and the three tiles
-  const tile = function (label, value, sub, color, bg) {
-    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:186px;margin:10px 9px 0 0">' +
-      eTable_('<tr><td style="' + FONT + 'padding:10px 12px;line-height:1.3;background:' + (bg || '#FFFFFF') + ';border:1px solid ' + T.line + ';border-radius:12px">' +
-        '<p style="margin:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:' + T.muted + '">' + esc_(label) + '</p>' +
-        '<p style="margin:2px 0 0;font-size:19px;font-weight:700;color:' + (color || T.ink) + '">' + value + '</p>' +
-        '<p style="margin:2px 0 0;font-size:12px;line-height:1.35;color:' + T.muted + '">' + sub + '</p></td></tr>', 'border-collapse:separate') +
-      '</div>';
-  };
-  const check = !d.verified ? tile('Count check', 'Not verified', 'The office hasn’t verified this report yet.')
-    : totalDiff === 0 ? tile('Count check', 'Matches', 'Office and counters agree', T.match)
-    : tile('Count check', diff_(d.office[3], d.counted[3]), 'Office vs. counters', T.diff, T.diffBg);
-  out.push(eCard_(
-    '<p style="' + FONT + 'margin:0;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:' + T.muted + '">Total giving</p>' +
-    '<p style="' + FONT + 'margin:0;font-size:34px;line-height:1.15;font-weight:700;color:' + T.deep + '">' + usd_(d.totalGiving) + '</p>' +
-    '<p style="' + FONT + 'margin:2px 0 0;font-size:13px;color:' + T.muted + '">' +
-      (d.addDesignated || d.addMission ? 'Offering, online giving and additional online gifts' : 'Offering plus online giving') + '</p>' +
-    '<div style="font-size:0;line-height:0">' +
-      tile('Offering', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted') +
-      tile('Online giving', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office') +
-      check + '</div>'));
-
-  // Budget, laid out like the bulletin figures
+  // Quick boxes, two by two: general fund, the week against the budget, the
+  // fiscal year to date, and in-person against online giving.
   const w = d.week, g = d.giving;
   const forWeek = g ? Math.round((w.subtotal - g.budget) * 100) / 100 : null;
+  const ytdBalance = g ? g.balance : null;
+  const signed = function (n) { return n === null || n === undefined ? '—' : (n < 0 ? '−' : '+') + usd_(Math.abs(n)); };
+  const box = function (inner, bg, border) {
+    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:290px;margin-top:10px">' +
+      eTable_('<tr><td style="' + FONT + 'padding:12px 14px;line-height:1.3;background:' + bg + ';border:1px solid ' + border +
+        ';border-radius:12px;height:96px;vertical-align:top">' + inner + '</td></tr>', 'border-collapse:separate') + '</div>';
+  };
+  const label = function (text, color) {
+    return '<p style="margin:0;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:' + color + '">' + esc_(text) + '</p>';
+  };
+  const big = function (value, color) {
+    return '<p style="margin:3px 0 0;font-size:26px;line-height:1.15;font-weight:700;color:' + color + '">' + value + '</p>';
+  };
+  const small = function (text, color) {
+    return '<p style="margin:3px 0 0;font-size:12px;line-height:1.35;color:' + color + '">' + text + '</p>';
+  };
+  // Over is green, under is amber, like the page's matches and differences.
+  const overUnderBox = function (title, n, sub, foot) {
+    const known = n !== null && n !== undefined;
+    const under = known && n < 0;
+    return box(label(title, T.muted) +
+      big(signed(n), !known ? T.muted : under ? T.diff : T.match) +
+      small(!known ? 'No budget figures for this week.' : sub(under), T.ink) +
+      (foot ? small(foot, T.muted) : ''),
+      !known ? '#FFFFFF' : under ? T.diffBg : '#EEF6E8', !known ? T.line : under ? '#F0D6A8' : T.line);
+  };
+
+  const generalBox = box(label('General fund this week', '#CFE3C0') + big(usd_(w.subtotal), '#FFFFFF') +
+    small('Offering, less designated and mission gifts, plus online giving', '#CFE3C0'), T.deep, T.deep);
+  const weekBox = overUnderBox('For the week', forWeek, function (under) {
+    return (under ? 'Under' : 'Over') + ' the ' + usd_(g.budget) + ' weekly budget';
+  });
+  const ytdBox = overUnderBox('Fiscal year to date', ytdBalance, function (under) {
+    return (under ? 'Under' : 'Over') + ' budget for the year so far';
+  }, g && g.ytd !== null ? usd_(g.ytd) + ' received this fiscal year' : '');
+
+  // In-person (the offering) against online (general, plus designated and mission gifts online)
+  const inPerson = Math.round(d.offering * 100);
+  const online = Math.round(((d.online || 0) + (d.addDesignated || 0) + (d.addMission || 0)) * 100);
+  const all = inPerson + online;
+  const pct = function (x) { return all ? Math.round(x * 100 / all) : 0; };
+  const split = function (name, cents, color) {
+    return '<tr><td style="' + FONT + 'padding:2px 0;font-size:13px;color:' + T.ink + '">' +
+      '<span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:' + color + ';margin-right:6px"></span>' + name + '</td>' +
+      '<td style="' + FONT + 'padding:2px 0;font-size:13px;font-weight:600;text-align:right;white-space:nowrap;color:' + T.ink + '">' + usd_(cents / 100) +
+      ' <span style="font-weight:400;color:' + T.muted + '">' + pct(cents) + '%</span></td></tr>';
+  };
+  const bar = all ? eTable_('<tr>' +
+      (inPerson ? '<td width="' + pct(inPerson) + '%" style="height:8px;background:' + T.deep + ';font-size:0;line-height:0">&nbsp;</td>' : '') +
+      (online ? '<td width="' + (100 - pct(inPerson)) + '%" style="height:8px;background:' + T.brand + ';font-size:0;line-height:0">&nbsp;</td>' : '') +
+      '</tr>', 'margin-top:8px;border-radius:4px;overflow:hidden;border-collapse:separate') : '';
+  const mixBox = box(label('In-person vs. online', T.muted) +
+    eTable_(split('In-person', inPerson, T.deep) + split('Online', online, T.brand), 'margin-top:6px') + bar, '#FFFFFF', T.line);
+
+  const pair = function (left, right) {
+    return '<div style="font-size:0;line-height:0">' + left + '<div style="display:inline-block;width:20px;height:1px"></div>' + right + '</div>';
+  };
+  const status = !d.verified ? '<span style="color:' + T.muted + '">Not verified yet. These are the counters’ figures.</span>'
+    : totalDiff === 0 ? '<span style="color:' + T.match + '">✓ The business office count matches the counters.</span>'
+    : '<span style="color:' + T.diff + ';font-weight:600">The business office count differs from the counters by ' + diff_(d.office[3], d.counted[3]) + '.</span>';
+  out.push(eCard_(pair(generalBox, weekBox) + pair(ytdBox, mixBox) +
+    '<p style="' + FONT + 'margin:12px 0 0;font-size:13px">' + status + '</p>'));
+
+  // Budget, laid out like the bulletin figures
   const pairs = function (rows, styles) { return eGrid_([{ label: '' }, { label: '', right: true }], rows, styles); };
   out.push(eCard_(eHeading_('Budget') +
     eCaption_('General fund is the offering, less designated and mission fund gifts, plus online giving. Year to date is the fiscal year' +
