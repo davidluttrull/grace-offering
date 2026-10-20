@@ -345,7 +345,7 @@
 
       <section class="card">
         <div class="card-head"><h2>Online Giving</h2></div>
-        <p class="hint">This week's online gifts. They're added to Total Giving, not compared with the count.</p>
+        <p class="hint">This week's online gifts to the general fund. Designated and Mission Fund gifts go under Additional Funds.</p>
         <label class="field">
           <span>Online giving total</span>
           <div class="dollar"><input id="online" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
@@ -361,6 +361,19 @@
         <label class="field">
           <span>Amount</span>
           <div class="dollar"><input id="cash" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+        </label>
+      </section>
+
+      <section class="card" id="fundsCard">
+        <h2>Additional Funds</h2>
+        <p class="hint">Designated and Mission Fund gifts received online. They’re added to those funds on the report.</p>
+        <label class="field">
+          <span>Designated</span>
+          <div class="dollar"><input id="addDesignated" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+        </label>
+        <label class="field">
+          <span>Mission Fund</span>
+          <div class="dollar"><input id="addMission" class="num" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
         </label>
       </section>
 
@@ -402,6 +415,7 @@
 
   const CODE_KEY = 'gbc-office-code';
   const NAME_KEY = 'gbc-office-name';
+  const FUND_NAMES = { general: 'General Fund', designated: 'Designated', mission: 'Mission Fund' };
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -564,7 +578,7 @@
       const list = document.createElement('div');
       box.append(h, cols, list);
       g.items.forEach((x) => {
-        const input = line(list, 'des', x.label, '', Math.round((x.amount || 0) * 100), x.office);
+        const input = line(list, 'des', x.label, FUND_NAMES[x.fund] || '', Math.round((x.amount || 0) * 100), x.office);
         Object.assign(input.dataset, { group: g.title, label: x.label });
       });
     });
@@ -586,6 +600,9 @@
     $('#cashCard').hidden = !('cash' in report);
     if (report.designations) renderDesignations();
     $('#cash').value = moneyValue(report.cash);
+    $('#fundsCard').hidden = !report.additional;
+    $('#addDesignated').value = moneyValue((report.additional || {}).designated);
+    $('#addMission').value = moneyValue((report.additional || {}).mission);
     $('#online').value = moneyValue(report.online);
     $('#onlineNote').value = report.onlineNote || '';
     $('#verifier').value = store((s) => s.getItem(NAME_KEY)) || '';
@@ -625,6 +642,8 @@
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
     const online = cents($('#online').value) || 0;
     const cash = cents($('#cash').value) || 0;
+    const extra = [['Additional designated', cents($('#addDesignated').value) || 0], ['Additional mission fund', cents($('#addMission').value) || 0]];
+    const other = cash + extra[0][1] + extra[1][1];
     $('#totals').innerHTML = names.map((name, i) => {
       const c = Math.round(counted[i] * 100);
       const d = office[i] - c;
@@ -633,7 +652,8 @@
     }).join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
       '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash) + '</td><td></td></tr>';
+      extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td><td></td></tr>').join('') +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + other) + '</td><td></td></tr>';
     if (report.designations) {
       const desCounted = report.designations.reduce((t, g) => t + g.items.reduce((s, x) => s + Math.round((x.amount || 0) * 100), 0), 0);
       const desNote = $('#desNote');
@@ -647,12 +667,13 @@
     const totalDiff = office[3] - Math.round(counted[3] * 100);
     $('#barTotal').textContent = usd(office[3]);
     $('#barDiff').textContent = totalDiff === 0 ? '✓ matches' : diffText(totalDiff) + ' vs. count';
-    return { office, counted, totalDiff, differing, desDiffering, online, cash };
+    return { office, counted, totalDiff, differing, desDiffering, online, cash, extra };
   }
 
   function collect() {
     const office = { coins: {}, bills: {}, checks: '', online: $('#online').value, onlineNote: $('#onlineNote').value.trim(),
-      designations: {}, cash: $('#cash').value };
+      designations: {}, cash: $('#cash').value,
+      additional: { designated: $('#addDesignated').value, mission: $('#addMission').value } };
     $$('#view input[data-key]').forEach((input) => {
       const [kind, name] = input.dataset.key.split(':');
       if (kind === 'coin') office.coins[name] = input.value;
@@ -696,13 +717,15 @@
     });
   }
 
-  function totalsTable(counted, office, online, cash) {
+  function totalsTable(counted, office, online, cash, extra) {
+    extra = extra || [];
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
     return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
       names.map((n, i) => '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + n + '</td><td>' + usd(counted[i]) + '</td><td>' + usd(office[i]) + '</td></tr>').join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td></tr>' +
       '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td></tr>' +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash) + '</td></tr>' +
+      extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td></tr>').join('') +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash + extra.reduce((t, x) => t + x[1], 0)) + '</td></tr>' +
       '</tbody></table>';
   }
 
@@ -732,7 +755,7 @@
       : '<p>Every amount you entered matches the count.</p>';
     const ok = await dialog({
       title: 'Save verification for ' + report.tab + '?',
-      body: totalsTable(counted, t.office, t.online, t.cash) + warn + '<p>Saving also emails the report to the staff.</p>',
+      body: totalsTable(counted, t.office, t.online, t.cash, t.extra) + warn + '<p>Saving also emails the report to the staff.</p>',
       ok: 'Save',
       cancel: 'Go back',
     });
@@ -756,7 +779,8 @@
       check: true,
       title: 'Verification saved',
       body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100)), Math.round((res.online || 0) * 100),
-        Math.round((res.cash || 0) * 100)) +
+        Math.round((res.cash || 0) * 100),
+        [['Additional designated', Math.round(((res.additional || {}).designated || 0) * 100)], ['Additional mission fund', Math.round(((res.additional || {}).mission || 0) * 100)]]) +
         '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>' + emailNote(res.emailed) +
         // An older script ignores online giving and doesn't email; it doesn't send totalGiving back.
         (res.totalGiving === undefined
@@ -775,7 +799,7 @@
 
   document.addEventListener('input', (e) => {
     const t = e.target;
-    if (!t.matches('#view input[data-key], #online, #cash')) return;
+    if (!t.matches('#view input[data-key], #online, #cash, #addDesignated, #addMission')) return;
     // Digits and one decimal point, at most two places.
     let clean = t.value.replace(/[^\d.]/g, '');
     const dot = clean.indexOf('.');

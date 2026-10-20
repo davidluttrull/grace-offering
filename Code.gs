@@ -12,7 +12,9 @@
  * office's own figures into the "Business Office Only" cells, plus the week's
  * online giving. Below the Designations it adds the office's amount for each
  * designation and any cash given after the count ("Cash Unaccounted"), which
- * Total Giving includes. Saving also emails a PDF report to the staff (Report.gs).
+ * Total Giving includes, plus any designated and mission fund gifts received
+ * online. Saving records the week's general fund on the fiscal year's giving
+ * tab (Giving.gs) and emails a PDF report to the staff (Report.gs).
  * See SETUP.md for how to deploy it.
  *
  * Every cell address below matches the church's offering report layout. If
@@ -95,6 +97,10 @@ const OFFICE_CELLS = [OFFICE_COIN_RANGE, OFFICE_BILL_RANGE, OFFICE_CHECKS_CELL, 
 const OFFICE_DES_TITLE = 'Designations: Business Office';
 const CASH_TITLE = 'Cash Unaccounted';
 const DES_TOTAL_LABEL = 'Designations total';
+// Designated and Mission Fund gifts the office received online, on their own
+// rows under Cash Unaccounted. Total Giving adds them in too.
+const ADD_DESIGNATED_LABEL = 'Additional Designated (online)';
+const ADD_MISSION_LABEL = 'Additional Mission Fund (online)';
 const MAX_LISTED_REPORTS = 25;
 
 const MAX_COUNT = 100000;
@@ -149,6 +155,7 @@ function setup() {
   // Each report lays out its own Designations section below the title.
   template.getRange('A' + DESIGNATIONS_ROW + ':H' + (DESIGNATIONS_ROW + 60)).breakApart().clear();
   ensureEmailsTab_();
+  ensureGivingTab_(fiscalYear_(new Date()));
   ss.setActiveSheet(template);
   ss.moveActiveSheet(ss.getNumSheets());
 
@@ -455,6 +462,7 @@ function getReport_(tab) {
   let checkCount = 0;
   checkCells.forEach(function (line) { line.forEach(function (v) { if (typeof v === 'number') checkCount++; }); });
   const totals = sh.getRange('C31:D34').getValues();
+  const extras = readOfficeExtras_(sh);
   return {
     status: 'ok',
     tab: sh.getName(),
@@ -468,8 +476,12 @@ function getReport_(tab) {
     verifiedOn: day(sh.getRange(VERIFIED_DATE_CELL).getValue()),
     online: sh.getRange(ONLINE_CELL).getValue(),
     onlineNote: String(sh.getRange(ONLINE_NOTE_CELL).getValue() || ''),
-    designations: designationsWithOffice_(sh),
-    cash: readOfficeExtras_(sh).cash,
+    designations: designationsWithOffice_(sh).map(function (g) {
+      g.items.forEach(function (x) { x.fund = fundOf_(x.label); });
+      return g;
+    }),
+    cash: extras.cash,
+    additional: { designated: extras.addDesignated, mission: extras.addMission },
   };
 }
 
@@ -504,18 +516,22 @@ function officeExtrasRow_(sh) {
 
 /**
  * Reads back what writeOfficeExtras_ wrote: the office's designation amounts
- * as {groupTitle: [{label, amount}]} in report order, and the cash given after
- * the count (null if none was entered).
+ * as {groupTitle: [{label, amount}]} in report order, the cash given after
+ * the count, and the additional designated and mission fund gifts (each null
+ * if none was entered).
  */
 function readOfficeExtras_(sh) {
-  const out = { designations: {}, cash: null };
+  const out = { designations: {}, cash: null, addDesignated: null, addMission: null };
   const start = officeExtrasRow_(sh);
   if (!start) return out;
   const rows = sh.getRange(start, 1, sh.getLastRow() - start + 1, 4).getValues();
   let section = '', group = null;
   rows.forEach(function (v) {
     const a = String(v[0] || '').trim();
-    if (a === CASH_TITLE) { out.cash = v[3] === '' || v[3] === null ? null : Number(v[3]); section = a; return; }
+    const d = v[3] === '' || v[3] === null ? null : Number(v[3]);
+    if (a === CASH_TITLE) { out.cash = d; section = a; return; }
+    if (a === ADD_DESIGNATED_LABEL) { out.addDesignated = d; return; }
+    if (a === ADD_MISSION_LABEL) { out.addMission = d; return; }
     if (a === OFFICE_DES_TITLE) { section = a; return; }
     if (!a || a === DES_TOTAL_LABEL) return;
     if (v[2] === 'Counted' || v[3] === 'Amount') return;   // column headings
@@ -534,10 +550,11 @@ function readOfficeExtras_(sh) {
 /**
  * Lays out the office's section below the counters' Designations: each
  * designation with the counted amount, the office's amount and the difference,
- * then the cash given after the count, which Total Giving (D36) adds in.
- * Replaces what an earlier verification wrote.
+ * then the cash given after the count and the additional designated and
+ * mission fund gifts, which Total Giving (D36) adds in. Replaces what an
+ * earlier verification wrote.
  */
-function writeOfficeExtras_(sh, groups, cash) {
+function writeOfficeExtras_(sh, groups, cash, additional) {
   const GRAY = '#D9D9D9';
   const LIGHT = '#F3F3F3';
   let row = officeExtrasRow_(sh);
@@ -593,16 +610,20 @@ function writeOfficeExtras_(sh, groups, cash) {
   money(3, 3);
   row += 2;
 
-  // Cash given after the count: label in A:C, amount in D.
-  range(1, 3).merge();
-  style(4);
-  range(1, 3).setBackground(GRAY).setFontWeight('bold');
-  range(1).setValue(CASH_TITLE).setHorizontalAlignment('left');
-  range(4).setValue(cash);
-  money(4);
-  sh.setRowHeight(row, 27);
-  sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+N(D' + row + ')')
-    .setNote('Total Offering + Online Giving + Cash Unaccounted (D' + row + ').');
+  // Cash given after the count, then the additional online gifts: label in A:C, amount in D.
+  const cells = [];
+  [[CASH_TITLE, cash], [ADD_DESIGNATED_LABEL, additional.designated], [ADD_MISSION_LABEL, additional.mission]].forEach(function (x) {
+    range(1, 3).merge();
+    style(4);
+    range(1, 3).setBackground(GRAY).setFontWeight('bold');
+    range(1).setValue(x[0]).setHorizontalAlignment('left');
+    range(4).setValue(x[1]);
+    money(4);
+    sh.setRowHeight(row, 27);
+    cells.push('D' + row++);
+  });
+  sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+' + cells.map(function (c) { return 'N(' + c + ')'; }).join('+'))
+    .setNote('Total Offering + Online Giving + Cash Unaccounted + additional Designated and Mission Fund (' + cells.join(', ') + ').');
 }
 
 /**
@@ -619,6 +640,10 @@ function verifyReport_(body) {
   const online = money_(office.online, 'online giving');
   const onlineNote = clean_(office.onlineNote, 100);
   const cash = cashAmount_(office.cash);
+  const additional = {
+    designated: money_((office.additional || {}).designated, 'additional designated'),
+    mission: money_((office.additional || {}).mission, 'additional mission fund'),
+  };
 
   let sh, result, wasVerified;
   const lock = LockService.getScriptLock();
@@ -655,7 +680,9 @@ function verifyReport_(body) {
         }),
       };
     });
-    writeOfficeExtras_(sh, groups, cash);
+    writeOfficeExtras_(sh, groups, cash, additional);
+    SpreadsheetApp.flush();
+    recordWeek_(sh);
     SpreadsheetApp.flush();
     const t = sh.getRange('C31:D34').getValues();
     result = {
@@ -666,6 +693,7 @@ function verifyReport_(body) {
       online: online === '' ? 0 : online,
       totalGiving: Number(sh.getRange(TOTAL_GIVING_CELL).getValue()) || 0,
       cash: cash === '' ? 0 : cash,
+      additional: { designated: additional.designated || 0, mission: additional.mission || 0 },
     };
   } finally {
     lock.releaseLock();

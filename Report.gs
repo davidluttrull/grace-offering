@@ -134,7 +134,10 @@ function reportData_(sh, tz) {
   const date = sh.getRange(DATE_CELL).getValue();
   const online = num(sh.getRange(ONLINE_CELL).getValue());
   const offering = verifiedBy ? Number(totals[3][1]) || 0 : Number(totals[3][0]) || 0;
-  const cash = verifiedBy ? readOfficeExtras_(sh).cash || 0 : 0;
+  const extras = verifiedBy ? readOfficeExtras_(sh) : {};
+  const cash = extras.cash || 0;
+  const addDesignated = extras.addDesignated || 0;
+  const addMission = extras.addMission || 0;
   const fmt = function (d, p) { return d instanceof Date ? Utilities.formatDate(d, tz, p) : ''; };
   // The Sunday this offering belongs to: the report date, or the Sunday before it.
   // ('u' is the ISO day number, 1 = Monday ... 7 = Sunday.)
@@ -161,8 +164,12 @@ function reportData_(sh, tz) {
     onlineNote: String(sh.getRange(ONLINE_NOTE_CELL).getValue() || ''),
     offering: offering,
     cash: cash,
-    totalGiving: Math.round((offering + (online || 0) + cash) * 100) / 100,
+    addDesignated: addDesignated,
+    addMission: addMission,
+    totalGiving: Math.round((offering + (online || 0) + cash + addDesignated + addMission) * 100) / 100,
     designations: designationsWithOffice_(sh),
+    week: weekFigures_(sh),        // general fund, designated, mission fund (Giving.gs)
+    giving: givingFor_(sh, tz),    // budget, year to date, balance from the giving tab
   };
   // How many designations the office's amount differs from the count on.
   out.desDiffs = !verifiedBy ? 0 : out.designations.reduce(function (n, g) {
@@ -349,10 +356,12 @@ function reportHtml_(d) {
       ? tile('COUNT CHECK', 'Matches', 'Office and counters agree', { width: 112, color: C_MATCH })
       : tile('COUNT CHECK', diff_(d.office[3], d.counted[3]), 'Office vs. counters', { width: 112, color: C_DIFF, bg: C_DIFF_BG });
   h.push(table_('<tr>' +
-    tile('TOTAL GIVING', usd_(d.totalGiving), d.cash ? 'Offering, online giving and cash unaccounted' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
+    tile('TOTAL GIVING', usd_(d.totalGiving), d.cash || d.addDesignated || d.addMission ? 'Offering, online and other gifts' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
     tile('OFFERING', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted', { width: 118 }) + gap +
     tile('ONLINE GIVING', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office', { width: 118 }) + gap +
     check + '</tr>', W));
+
+  h.push(budgetHtml_(d, W));
 
   // Verification summary
   h.push(heading_('Verification'));
@@ -366,10 +375,11 @@ function reportHtml_(d) {
   });
   vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
   vStyles.push(null);
-  if (d.cash) {
-    vRows.push(['Cash unaccounted', '', usd_(d.cash), '']);
+  [['Cash unaccounted', d.cash], ['Additional designated (online)', d.addDesignated], ['Additional mission fund (online)', d.addMission]].forEach(function (x) {
+    if (!x[1]) return;
+    vRows.push([x[0], '', usd_(x[1]), '']);
     vStyles.push(null);
-  }
+  });
   vRows.push(['<b>Total giving</b>', '', '<b>' + usd_(d.totalGiving) + '</b>', '']);
   vStyles.push('background:' + C_DEEP + ';color:#ffffff;font-weight:bold');
   h.push(grid_([{ label: '', width: 190 }, { label: 'COUNTED', width: 112, right: true },
@@ -435,6 +445,52 @@ function reportHtml_(d) {
   return h.join('\n');
 }
 
+/** "+$29,600.16 over" / "−$4,296.52 under" against the budget, or a dash. */
+function overUnder_(n) {
+  if (n === null || n === undefined) return '—';
+  return (n < 0 ? '−' : '+') + usd_(Math.abs(n)) + (n < 0 ? ' under' : ' over');
+}
+
+function overUnderCell_(n) {
+  if (n === null || n === undefined) return '<span style="color:#AAAAAA">—</span>';
+  return '<span style="color:' + (n < 0 ? C_DIFF : C_MATCH) + ';font-weight:bold">' + overUnder_(n) + '</span>';
+}
+
+/** The week against the budget and the fiscal year to date, laid out like the bulletin figures. */
+function budgetHtml_(d, W) {
+  const w = d.week, g = d.giving;
+  const forWeek = g ? Math.round((w.subtotal - g.budget) * 100) / 100 : null;
+  const col = function (title, rows, styles) {
+    return td_('<p style="margin:4pt 0 2pt;font-size:9.5pt;font-weight:bold">' + esc_(title) + '</p>' +
+      grid_([{ label: '', width: 175 }, { label: '', width: 80, right: true }], rows, { styles: styles }), 'width:255pt');
+  };
+  const left = [['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
+    ['Online giving', usd_(w.online)]];
+  if (w.cash) left.push(['Cash unaccounted', usd_(w.cash)]);
+  left.push(['<b>Subtotal general fund</b>', '<b>' + usd_(w.subtotal) + '</b>'], ['For week', overUnderCell_(forWeek)]);
+  const leftStyles = left.map(function () { return null; });
+  leftStyles[left.length - 2] = 'background:' + C_TINT;
+  const right = [['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
+    ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)],
+    ['<b>Year to date</b>', '<b>' + (g && g.ytd !== null ? usd_(g.ytd) : '—') + '</b>']];
+  const rightStyles = [null, null, null, 'background:' + C_TINT];
+  return heading_('Budget') +
+    caption_('General fund is the offering, less designated and mission fund gifts, plus online giving' + (w.cash ? ' and cash unaccounted' : '') +
+      '. Year to date is the fiscal year' + (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
+    table_('<tr>' + col('General Fund', left, leftStyles) + td_('', 'width:16pt') + col('Funds and Year to Date', right, rightStyles) + '</tr>', W);
+}
+
+/** The bulletin figures as [label, value] pairs, for the email. */
+function budgetLines_(d) {
+  const w = d.week, g = d.giving;
+  const lines = [['Weekly budget', g ? usd_(g.budget) : '—'],
+    ['General fund this week', usd_(w.subtotal) + (g ? ' (' + overUnder_(Math.round((w.subtotal - g.budget) * 100) / 100) + ' budget)' : '')],
+    ['Weekly fiscal YTD', g && g.balance !== null ? overUnder_(g.balance) + ' budget' : '—'],
+    ['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
+    ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']];
+  return lines;
+}
+
 // ---- Email body ---------------------------------------------------------------
 
 function emailText_(d, updated) {
@@ -445,8 +501,12 @@ function emailText_(d, updated) {
     '',
     'Offering: ' + usd_(d.offering),
     'Online giving: ' + usd_(d.online === null ? 0 : d.online) + (d.onlineNote ? ' (' + d.onlineNote + ')' : ''),
-  ].concat(d.cash ? ['Cash unaccounted: ' + usd_(d.cash)] : [], [
+  ].concat(d.cash ? ['Cash unaccounted: ' + usd_(d.cash)] : [],
+    d.addDesignated ? ['Additional designated (online): ' + usd_(d.addDesignated)] : [],
+    d.addMission ? ['Additional mission fund (online): ' + usd_(d.addMission)] : [], [
     'Total giving: ' + usd_(d.totalGiving),
+    '',
+  ], budgetLines_(d).map(function (l) { return l[0] + ': ' + l[1]; }), [
     '',
     !d.verified ? 'Not verified yet.'
       : totalDiff === 0 ? 'The business office count matches the counters.'
@@ -482,8 +542,13 @@ function emailHtml_(d, updated) {
     row('Online giving' + (d.onlineNote ? ' <span style="color:' + C_MUTED + '">(' + esc_(d.onlineNote) + ')</span>' : ''),
       usd_(d.online === null ? 0 : d.online)) +
     (d.cash ? row('Cash unaccounted', usd_(d.cash)) : '') +
+    (d.addDesignated ? row('Additional designated (online)', usd_(d.addDesignated)) : '') +
+    (d.addMission ? row('Additional mission fund (online)', usd_(d.addMission)) : '') +
     row('Total giving', usd_(d.totalGiving), true) +
     '</table>' +
+    '<p style="margin:0 0 4px;font-weight:bold;color:' + C_DEEP + '">Budget</p>' +
+    '<table style="border-collapse:collapse;margin-bottom:12px">' +
+    budgetLines_(d).map(function (l) { return row(l[0], l[1], l[0] === 'Year to date'); }).join('') + '</table>' +
     '<p style="margin:0 0 8px">' + status + '</p>' +
     (d.desDiffs ? '<p style="margin:0 0 8px;color:' + C_DIFF + ';font-weight:bold">' + desDiffText_(d.desDiffs) + '</p>' : '') +
     '<p style="margin:0 0 12px;color:' + C_MUTED + '">Counted by ' + esc_(d.counters.join(', ') || 'no names given') +
