@@ -168,6 +168,7 @@
   @media (max-width: 420px) { table.totals { font-size: 14px; } table.totals th { font-size: 11px; } }
   table.totals td.diff { color: var(--diff); font-weight: 600; }
   table.totals td.match { color: var(--match); }
+  table.totals tr.aside td { color: var(--muted); font-size: 14px; }
 
   .notice {
     margin: 10px 0 0;
@@ -643,7 +644,7 @@
     const online = cents($('#online').value) || 0;
     const cash = cents($('#cash').value) || 0;
     const extra = [['Additional designated', cents($('#addDesignated').value) || 0], ['Additional mission fund', cents($('#addMission').value) || 0]];
-    const other = cash + extra[0][1] + extra[1][1];
+    const other = extra[0][1] + extra[1][1];   // cash unaccounted is for the record only
     $('#totals').innerHTML = names.map((name, i) => {
       const c = Math.round(counted[i] * 100);
       const d = office[i] - c;
@@ -651,9 +652,9 @@
         '</td><td class="' + (d === 0 ? 'match' : 'diff') + '">' + (d === 0 ? '✓' : diffText(d)) + '</td></tr>';
     }).join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
-      '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' +
       extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td><td></td></tr>').join('') +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + other) + '</td><td></td></tr>';
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + other) + '</td><td></td></tr>' +
+      (cash ? '<tr class="aside"><td>Cash unaccounted (record only)</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' : '');
     if (report.designations) {
       const desCounted = report.designations.reduce((t, g) => t + g.items.reduce((s, x) => s + Math.round((x.amount || 0) * 100), 0), 0);
       const desNote = $('#desNote');
@@ -723,9 +724,9 @@
     return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
       names.map((n, i) => '<tr' + (i === 3 ? ' class="grand"' : '') + '><td>' + n + '</td><td>' + usd(counted[i]) + '</td><td>' + usd(office[i]) + '</td></tr>').join('') +
       '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td></tr>' +
-      '<tr><td>Cash unaccounted</td><td></td><td>' + usd(cash) + '</td></tr>' +
       extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td></tr>').join('') +
-      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + cash + extra.reduce((t, x) => t + x[1], 0)) + '</td></tr>' +
+      '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + extra.reduce((t, x) => t + x[1], 0)) + '</td></tr>' +
+      (cash ? '<tr class="aside"><td>Cash unaccounted (record only)</td><td></td><td>' + usd(cash) + '</td></tr>' : '') +
       '</tbody></table>';
   }
 

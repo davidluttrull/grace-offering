@@ -166,7 +166,8 @@ function reportData_(sh, tz) {
     cash: cash,
     addDesignated: addDesignated,
     addMission: addMission,
-    totalGiving: Math.round((offering + (online || 0) + cash + addDesignated + addMission) * 100) / 100,
+    // Cash Unaccounted is for the record only, so it isn't in Total Giving.
+    totalGiving: Math.round((offering + (online || 0) + addDesignated + addMission) * 100) / 100,
     designations: designationsWithOffice_(sh),
     week: weekFigures_(sh),        // general fund, designated, mission fund (Giving.gs)
     giving: givingFor_(sh, tz),    // budget, year to date, balance from the giving tab
@@ -356,7 +357,7 @@ function reportHtml_(d) {
       ? tile('COUNT CHECK', 'Matches', 'Office and counters agree', { width: 112, color: C_MATCH })
       : tile('COUNT CHECK', diff_(d.office[3], d.counted[3]), 'Office vs. counters', { width: 112, color: C_DIFF, bg: C_DIFF_BG });
   h.push(table_('<tr>' +
-    tile('TOTAL GIVING', usd_(d.totalGiving), d.cash || d.addDesignated || d.addMission ? 'Offering, online and other gifts' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
+    tile('TOTAL GIVING', usd_(d.totalGiving), d.addDesignated || d.addMission ? 'Offering, online and other gifts' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
     tile('OFFERING', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted', { width: 118 }) + gap +
     tile('ONLINE GIVING', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office', { width: 118 }) + gap +
     check + '</tr>', W));
@@ -375,13 +376,17 @@ function reportHtml_(d) {
   });
   vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
   vStyles.push(null);
-  [['Cash unaccounted', d.cash], ['Additional designated (online)', d.addDesignated], ['Additional mission fund (online)', d.addMission]].forEach(function (x) {
+  [['Additional designated (online)', d.addDesignated], ['Additional mission fund (online)', d.addMission]].forEach(function (x) {
     if (!x[1]) return;
     vRows.push([x[0], '', usd_(x[1]), '']);
     vStyles.push(null);
   });
   vRows.push(['<b>Total giving</b>', '', '<b>' + usd_(d.totalGiving) + '</b>', '']);
   vStyles.push('background:' + C_DEEP + ';color:#ffffff;font-weight:bold');
+  if (d.cash) {
+    vRows.push(['Cash unaccounted (record only)', '', usd_(d.cash), '']);
+    vStyles.push('color:' + C_MUTED);
+  }
   h.push(grid_([{ label: '', width: 190 }, { label: 'COUNTED', width: 112, right: true },
     { label: 'OFFICE', width: 112, right: true }, { label: 'DIFFERENCE', width: 112, right: true }], vRows, { styles: vStyles }));
 
@@ -466,7 +471,6 @@ function budgetHtml_(d, W) {
   };
   const left = [['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
     ['Online giving', usd_(w.online)]];
-  if (w.cash) left.push(['Cash unaccounted', usd_(w.cash)]);
   left.push(['<b>Subtotal general fund</b>', '<b>' + usd_(w.subtotal) + '</b>'], ['For week', overUnderCell_(forWeek)]);
   const leftStyles = left.map(function () { return null; });
   leftStyles[left.length - 2] = 'background:' + C_TINT;
@@ -475,7 +479,7 @@ function budgetHtml_(d, W) {
     ['<b>Year to date</b>', '<b>' + (g && g.ytd !== null ? usd_(g.ytd) : '—') + '</b>']];
   const rightStyles = [null, null, null, 'background:' + C_TINT];
   return heading_('Budget') +
-    caption_('General fund is the offering, less designated and mission fund gifts, plus online giving' + (w.cash ? ' and cash unaccounted' : '') +
+    caption_('General fund is the offering, less designated and mission fund gifts, plus online giving' +
       '. Year to date is the fiscal year' + (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
     table_('<tr>' + col('General Fund', left, leftStyles) + td_('', 'width:16pt') + col('Funds and Year to Date', right, rightStyles) + '</tr>', W);
 }
@@ -501,10 +505,10 @@ function emailText_(d, updated) {
     '',
     'Offering: ' + usd_(d.offering),
     'Online giving: ' + usd_(d.online === null ? 0 : d.online) + (d.onlineNote ? ' (' + d.onlineNote + ')' : ''),
-  ].concat(d.cash ? ['Cash unaccounted: ' + usd_(d.cash)] : [],
-    d.addDesignated ? ['Additional designated (online): ' + usd_(d.addDesignated)] : [],
+  ].concat(d.addDesignated ? ['Additional designated (online): ' + usd_(d.addDesignated)] : [],
     d.addMission ? ['Additional mission fund (online): ' + usd_(d.addMission)] : [], [
     'Total giving: ' + usd_(d.totalGiving),
+  ], d.cash ? ['Cash unaccounted (record only, not in total giving): ' + usd_(d.cash)] : [], [
     '',
   ], budgetLines_(d).map(function (l) { return l[0] + ': ' + l[1]; }), [
     '',
@@ -541,10 +545,10 @@ function emailHtml_(d, updated) {
     row('Offering', usd_(d.offering)) +
     row('Online giving' + (d.onlineNote ? ' <span style="color:' + C_MUTED + '">(' + esc_(d.onlineNote) + ')</span>' : ''),
       usd_(d.online === null ? 0 : d.online)) +
-    (d.cash ? row('Cash unaccounted', usd_(d.cash)) : '') +
     (d.addDesignated ? row('Additional designated (online)', usd_(d.addDesignated)) : '') +
     (d.addMission ? row('Additional mission fund (online)', usd_(d.addMission)) : '') +
     row('Total giving', usd_(d.totalGiving), true) +
+    (d.cash ? row('<span style="color:' + C_MUTED + '">Cash unaccounted (record only)</span>', '<span style="color:' + C_MUTED + '">' + usd_(d.cash) + '</span>') : '') +
     '</table>' +
     '<p style="margin:0 0 4px;font-weight:bold;color:' + C_DEEP + '">Budget</p>' +
     '<table style="border-collapse:collapse;margin-bottom:12px">' +

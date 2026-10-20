@@ -11,9 +11,9 @@
  * it lists the report tabs, shows the counters' figures, and saves the
  * office's own figures into the "Business Office Only" cells, plus the week's
  * online giving. Below the Designations it adds the office's amount for each
- * designation and any cash given after the count ("Cash Unaccounted"), which
- * Total Giving includes, plus any designated and mission fund gifts received
- * online. Saving records the week's general fund on the fiscal year's giving
+ * designation, any cash given after the count ("Cash Unaccounted", kept for
+ * the record and not added to any total), and any designated and mission fund
+ * gifts received online, which Total Giving includes. Saving records the week's general fund on the fiscal year's giving
  * tab (Giving.gs) and emails a PDF report to the staff (Report.gs).
  * See SETUP.md for how to deploy it.
  *
@@ -92,13 +92,13 @@ const OFFICE_CELLS = [OFFICE_COIN_RANGE, OFFICE_BILL_RANGE, OFFICE_CHECKS_CELL, 
   ONLINE_CELL, ONLINE_NOTE_CELL];
 // Below the counters' Designations section, verifying adds the office's own
 // designation amounts and the cash given after the count (its own row, in D,
-// which Total Giving adds in). Each verification rewrites everything from the
-// first of these titles down.
+// for the record only: no total adds it in). Each verification rewrites
+// everything from the first of these titles down.
 const OFFICE_DES_TITLE = 'Designations: Business Office';
 const CASH_TITLE = 'Cash Unaccounted';
 const DES_TOTAL_LABEL = 'Designations total';
 // Designated and Mission Fund gifts the office received online, on their own
-// rows under Cash Unaccounted. Total Giving adds them in too.
+// rows under Cash Unaccounted. Total Giving adds these in.
 const ADD_DESIGNATED_LABEL = 'Additional Designated (online)';
 const ADD_MISSION_LABEL = 'Additional Mission Fund (online)';
 const MAX_LISTED_REPORTS = 25;
@@ -648,9 +648,9 @@ function readOfficeExtras_(sh) {
 /**
  * Lays out the office's section below the counters' Designations: each
  * designation with the counted amount, the office's amount and the difference,
- * then the cash given after the count and the additional designated and
- * mission fund gifts, which Total Giving (D36) adds in. Replaces what an
- * earlier verification wrote.
+ * then the cash given after the count (for the record only) and the
+ * additional designated and mission fund gifts, which Total Giving (D36) adds
+ * in. Replaces what an earlier verification wrote.
  */
 function writeOfficeExtras_(sh, groups, cash, additional) {
   let row = officeExtrasRow_(sh);
@@ -726,8 +726,11 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
     sh.setRowHeight(row, 27);
     cells.push('D' + row++);
   });
-  sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+' + cells.map(function (c) { return 'N(' + c + ')'; }).join('+'))
-    .setNote('Total Offering + Online Giving + Cash Unaccounted + additional Designated and Mission Fund (' + cells.join(', ') + ').');
+  // cells[0] is Cash Unaccounted, which is kept for the record and left out.
+  const added = cells.slice(1);
+  sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+' + added.map(function (c) { return 'N(' + c + ')'; }).join('+'))
+    .setNote('Total Offering + Online Giving + additional Designated and Mission Fund (' + added.join(', ') + '). ' +
+      'Cash Unaccounted (' + cells[0] + ') is for the record only and isn\'t added.');
 }
 
 /**

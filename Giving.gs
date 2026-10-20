@@ -14,8 +14,9 @@
  * date back from the tab.
  *
  * General fund for a week = the offering, less the designations that belong
- * to the Designated and Mission Fund groups, plus online giving and any cash
- * unaccounted. Which group a designation belongs to is set below.
+ * to the Designated and Mission Fund groups, plus online giving. (Cash
+ * Unaccounted is for the record only and isn't counted.) Which group a
+ * designation belongs to is set below.
  */
 
 const FISCAL_YEAR_START_MONTH = 7;   // July
@@ -147,13 +148,11 @@ function weekFigures_(sh) {
     g.items.forEach(function (x) { inOffering[fundOf_(x.label)] += c(x.office !== null ? x.office : x.amount); });
   });
   const online = verified ? c(sh.getRange(ONLINE_CELL).getValue()) : 0;
-  const cash = verified ? c(extras.cash) : 0;
   const general = offering - inOffering.designated - inOffering.mission;
   return {
     generalFund: general / 100,           // the offering, less designated and mission fund gifts
     online: online / 100,
-    cash: cash / 100,
-    subtotal: (general + online + cash) / 100,
+    subtotal: (general + online) / 100,
     designated: (inOffering.designated + c(extras.addDesignated)) / 100,
     mission: (inOffering.mission + c(extras.addMission)) / 100,
   };
