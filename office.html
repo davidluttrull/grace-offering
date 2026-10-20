@@ -148,19 +148,6 @@
   .line.sum { border-top: 2px solid var(--ink); margin-top: 2px; font-weight: 700; }
   .line.sum .office { text-align: right; font-variant-numeric: tabular-nums; }
   .note { font-size: 13px; text-align: right; margin-top: 3px; }
-
-  /* Each check: amount, fund picker, optional split into two funds */
-  .chk { padding: 8px 0; border-top: 1px solid var(--line); }
-  .chk:first-child { border-top: 0; }
-  .chk-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-  .chk-head small { font-size: 12px; color: var(--muted); margin-left: 4px; }
-  .chk-head .amt { font-variant-numeric: tabular-nums; font-weight: 600; }
-  .chk-part { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 6px; align-items: center; }
-  .chk.split .chk-part { grid-template-columns: minmax(0, 1fr) 116px; }
-  .chk-part .rest { text-align: right; font-variant-numeric: tabular-nums; padding-right: 2px; }
-  .chk-part .rest.bad { color: var(--danger); font-weight: 600; }
-  .chk.moved select { border-color: var(--brand); background: var(--step-bg); }
-  .chk .link { padding: 6px 0 0; font-size: 13px; }
   .note.match { color: var(--match); }
   .note.diff { color: var(--diff); font-weight: 600; }
 
@@ -351,11 +338,6 @@
         <div class="card-head"><h2>Checks</h2></div>
         <div class="cols"><span></span><span>Counted</span><span>Office</span></div>
         <div id="checks"></div>
-        <div id="checkFunds" hidden>
-          <h3>Each check</h3>
-          <p class="hint">Checks go to the General Fund unless you pick another fund. Don’t move a check the counters already entered under Designations.</p>
-          <div id="checkList"></div>
-        </div>
       </section>
 
       <section class="card" id="desCard">
@@ -618,69 +600,6 @@
     box.appendChild(sum);
   }
 
-  // Funds a check can go to: the General Fund, or any class or designation on the report.
-  const GENERAL = 'General Fund';
-  let fundOf = {};   // account name -> 'general' | 'designated' | 'mission'
-
-  function renderChecks() {
-    const list = (report.checks && report.checks.list) || [];
-    $('#checkFunds').hidden = !list.length || !report.designations;
-    const box = $('#checkList');
-    box.innerHTML = '';
-    if ($('#checkFunds').hidden) return;
-    fundOf = { [GENERAL]: 'general' };
-    let options = '<option value="' + GENERAL + '">' + GENERAL + '</option>';
-    report.designations.forEach((g) => {
-      const fresh = g.items.filter((x) => !(x.label in fundOf));
-      fresh.forEach((x) => { fundOf[x.label] = x.fund || 'designated'; });
-      if (fresh.length) {
-        options += '<optgroup label="' + esc(g.title) + '">' +
-          fresh.map((x) => '<option value="' + esc(x.label) + '">' + esc(x.label) + ' (' + FUND_NAMES[fundOf[x.label]] + ')</option>').join('') + '</optgroup>';
-      }
-    });
-    list.forEach((c) => {
-      const div = document.createElement('div');
-      div.className = 'chk';
-      Object.assign(div.dataset, { index: c.index, amount: Math.round(c.amount * 100) });
-      div.innerHTML = '<div class="chk-head"><span>Check ' + (c.index + 1) + '<small>' + esc(c.cell) + '</small></span>' +
-        '<span class="amt">' + usd(Math.round(c.amount * 100)) + '</span></div>' +
-        '<div class="chk-part"><select aria-label="Fund for check ' + (c.index + 1) + '">' + options + '</select>' +
-        '<div class="dollar" data-split-only hidden><input class="num" data-part-amount type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="Amount to the first fund"></div></div>' +
-        '<div class="chk-part" data-split-only hidden><select aria-label="Second fund for check ' + (c.index + 1) + '">' + options + '</select><span class="rest"></span></div>' +
-        '<button type="button" class="link" data-split>Split between two funds</button>';
-      const [first, second] = div.querySelectorAll('select');
-      const pick = (sel, account) => {
-        if (!(account in fundOf)) sel.insertAdjacentHTML('beforeend', '<option value="' + esc(account) + '">' + esc(account) + '</option>');
-        sel.value = account;
-      };
-      const parts = c.parts || [];
-      pick(first, parts[0] ? parts[0].account : GENERAL);
-      if (parts.length === 2) {
-        setSplit(div, true);
-        div.querySelector('[data-part-amount]').value = moneyValue(parts[0].amount);
-        pick(second, parts[1].account);
-      }
-      box.appendChild(div);
-    });
-  }
-
-  function setSplit(div, on) {
-    div.classList.toggle('split', on);
-    div.querySelectorAll('[data-split-only]').forEach((el) => { el.hidden = !on; });
-    div.querySelector('[data-split]').textContent = on ? 'Don’t split' : 'Split between two funds';
-    if (!on) div.querySelector('[data-part-amount]').value = '';
-  }
-
-  // A check's funds as [{account, cents}], or null when the split amount is missing or too big.
-  function checkParts(div) {
-    const total = Number(div.dataset.amount);
-    const [first, second] = div.querySelectorAll('select');
-    if (!div.classList.contains('split')) return [{ account: first.value, cents: total }];
-    const a = cents(div.querySelector('[data-part-amount]').value);
-    if (a === null || a <= 0 || a >= total) return null;
-    return [{ account: first.value, cents: a }, { account: second.value, cents: total - a }];
-  }
-
   function render() {
     ['#coins', '#bills', '#checks'].forEach((t) => { $(t).innerHTML = ''; });
     report.coins.forEach((c) => line('#coins', 'coin:' + c.name, c.name, c.quantity ? c.quantity + ' counted' : '', Math.round(c.counted * 100), c.office));
@@ -691,7 +610,6 @@
     $('#desCard').hidden = !report.designations;
     $('#cashCard').hidden = !('cash' in report);
     if (report.designations) renderDesignations();
-    renderChecks();
     $('#cash').value = moneyValue(report.cash);
     $('#fundsCard').hidden = !report.additional;
     $('#addDesignated').value = moneyValue((report.additional || {}).designated);
@@ -752,31 +670,12 @@
       '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + other) + '</td><td></td></tr>' +
       (cash ? '<tr class="aside"><td>Cash unaccounted (record only)</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' : '');
     // General fund, as the bulletin and the giving tab figure it.
-    // Checks moved out of the general fund, whole or in part.
-    let checksOut = 0;
-    $$('#checkList .chk').forEach((div) => {
-      const total = Number(div.dataset.amount);
-      const [first, second] = div.querySelectorAll('select');
-      const split = div.classList.contains('split');
-      const a = cents(div.querySelector('[data-part-amount]').value);
-      const rest = div.querySelector('.rest');
-      if (split) {
-        rest.textContent = a === null ? '' : usd(total - a);
-        rest.classList.toggle('bad', a !== null && (a <= 0 || a >= total));
-      }
-      const parts = checkParts(div) || [{ account: first.value, cents: a !== null && a < total ? a : 0 }];
-      let moved = 0;
-      parts.forEach((p) => { if (fundOf[p.account] !== 'general') moved += p.cents; });
-      checksOut += moved;
-      div.classList.toggle('moved', fundOf[first.value] !== 'general' || (split && fundOf[second.value] !== 'general'));
-    });
-    const general = office[3] - inFund.designated - inFund.mission - checksOut + online;
+    const general = office[3] - inFund.designated - inFund.mission + online;
     if (report.designations) {
       $('#totals').insertAdjacentHTML('beforeend', '<tr class="section"><td colspan="4">General fund</td></tr>' +
         '<tr><td>Total Offering</td><td></td><td>' + usd(office[3]) + '</td><td></td></tr>' +
         '<tr><td>Less designated</td><td></td><td>' + (inFund.designated ? '−' : '') + usd(inFund.designated) + '</td><td></td></tr>' +
         '<tr><td>Less mission fund</td><td></td><td>' + (inFund.mission ? '−' : '') + usd(inFund.mission) + '</td><td></td></tr>' +
-        ($('#checkFunds').hidden ? '' : '<tr><td>Less designated checks</td><td></td><td>' + (checksOut ? '−' : '') + usd(checksOut) + '</td><td></td></tr>') +
         '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
         '<tr class="grand"><td>General Fund Total</td><td></td><td>' + usd(general) + '</td><td></td></tr>');
     }
@@ -808,12 +707,6 @@
       else if (kind === 'des') (office.designations[input.dataset.group] = office.designations[input.dataset.group] || []).push({ label: input.dataset.label, amount: input.value });
       else office.checks = input.value;
     });
-    // Only checks that aren't all general fund; the script treats the rest as general.
-    office.checkFunds = $$('#checkList .chk').map((div) => {
-      const parts = checkParts(div);
-      if (!parts || (parts.length === 1 && parts[0].account === GENERAL)) return null;
-      return { index: Number(div.dataset.index), parts: parts.map((p) => ({ account: p.account, amount: (p.cents / 100).toFixed(2) })) };
-    }).filter(Boolean);
     return office;
   }
 
@@ -879,20 +772,6 @@
       $('#verifier').focus();
       return;
     }
-    for (const div of $$('#checkList .chk.split')) {
-      const n = Number(div.dataset.index) + 1;
-      const [first, second] = div.querySelectorAll('select');
-      if (!checkParts(div)) {
-        toast('Enter how much of check ' + n + ' goes to ' + first.value + '. It has to be less than the whole check.');
-        div.querySelector('[data-part-amount]').focus();
-        return;
-      }
-      if (first.value === second.value) {
-        toast('Pick two different funds for check ' + n + '.');
-        second.focus();
-        return;
-      }
-    }
     $('#toast').hidden = true;
     const t = recalc();
     const counted = t.counted.map((v) => Math.round(v * 100));
@@ -947,24 +826,13 @@
 
   document.addEventListener('input', (e) => {
     const t = e.target;
-    if (!t.matches('#view input[data-key], #online, #cash, #addDesignated, #addMission, [data-part-amount]')) return;
+    if (!t.matches('#view input[data-key], #online, #cash, #addDesignated, #addMission')) return;
     // Digits and one decimal point, at most two places.
     let clean = t.value.replace(/[^\d.]/g, '');
     const dot = clean.indexOf('.');
     if (dot >= 0) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, '').slice(0, 2);
     clean = clean.slice(0, 10);
     if (clean !== t.value) t.value = clean;
-    recalc();
-  });
-
-  document.addEventListener('change', (e) => { if (e.target.matches('#checkList select')) recalc(); });
-  $('#checkList').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-split]');
-    if (!btn) return;
-    const div = btn.closest('.chk');
-    const on = !div.classList.contains('split');
-    setSplit(div, on);
-    if (on) div.querySelector('[data-part-amount]').focus();
     recalc();
   });
 

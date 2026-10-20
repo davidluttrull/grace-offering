@@ -101,10 +101,6 @@ const DES_TOTAL_LABEL = 'Designations total';
 // rows under Cash Unaccounted. Total Giving adds these in.
 const ADD_DESIGNATED_LABEL = 'Additional Designated (online)';
 const ADD_MISSION_LABEL = 'Additional Mission Fund (online)';
-// Checks the office moves out of the general fund, whole or split between two
-// funds, listed under the additional gifts. Checks not listed stay general.
-const DES_CHECKS_TITLE = 'Designated Checks';
-const GENERAL_ACCOUNT = 'General Fund';
 const MAX_LISTED_REPORTS = 25;
 
 const MAX_COUNT = 100000;
@@ -373,7 +369,7 @@ function restyleReport_(sh) {
     return { title: g.title, items: g.items.map(function (x) { return { label: clean_(x.label, 100), amount: blank(x.amount) }; }) };
   }));
   if (hadOffice) {
-    writeOfficeExtras_(sh, office, blank(extras.cash), { designated: blank(extras.addDesignated), mission: blank(extras.addMission) }, extras.checks);
+    writeOfficeExtras_(sh, office, blank(extras.cash), { designated: blank(extras.addDesignated), mission: blank(extras.addMission) });
   }
 }
 
@@ -572,14 +568,7 @@ function getReport_(tab) {
     counters: sh.getRange('G31:G33').getValues().map(function (r) { return String(r[0] || ''); }).filter(Boolean),
     coins: rows('A9:E14', COINS),
     bills: rows('A20:E26', BILLS),
-    checks: {
-      count: checkCount, counted: Number(sh.getRange('H27').getValue()) || 0, office: sh.getRange(OFFICE_CHECKS_CELL).getValue(),
-      // Each check, with the funds the office split it into (null = all general fund).
-      list: checkList_(sh).map(function (c) {
-        const saved = extras.checks.filter(function (x) { return x.index === c.index; })[0];
-        return { index: c.index, cell: c.cell, amount: c.amount, parts: saved ? saved.parts : null };
-      }),
-    },
+    checks: { count: checkCount, counted: Number(sh.getRange('H27').getValue()) || 0, office: sh.getRange(OFFICE_CHECKS_CELL).getValue() },
     counted: totals.map(function (r) { return Number(r[0]) || 0; }),
     verifiedBy: String(sh.getRange(VERIFIER_CELL).getValue() || ''),
     verifiedOn: day(sh.getRange(VERIFIED_DATE_CELL).getValue()),
@@ -612,56 +601,6 @@ function designationsWithOffice_(sh) {
   });
 }
 
-/** The counters' checks in report order: [{index, cell, amount}], skipping empty boxes. */
-function checkList_(sh) {
-  const v = sh.getRange('G9:H26').getValues();
-  const out = [];
-  CHECK_CELLS.forEach(function (a1, i) {
-    const amount = v[Number(a1.slice(1)) - 9][a1[0] === 'G' ? 0 : 1];
-    if (typeof amount === 'number') out.push({ index: i, cell: a1, amount: amount });
-  });
-  return out;
-}
-
-/**
- * The funds the office put checks into, checked against the report:
- * [{index, amount, parts: [{account, amount}]}]. Each part's account is
- * "General Fund" or one of the report's designations, there are one or two
- * parts, and they add up to the check. Checks left all in the general fund
- * aren't listed.
- */
-function checkFunds_(sh, sent) {
-  const checks = {};
-  checkList_(sh).forEach(function (c) { checks[c.index] = c; });
-  const accounts = [GENERAL_ACCOUNT];
-  readDesignations_(sh).forEach(function (g) {
-    g.items.forEach(function (x) { if (accounts.indexOf(x.label) === -1) accounts.push(x.label); });
-  });
-  const out = [];
-  (Array.isArray(sent) ? sent : []).slice(0, CHECK_CELLS.length).forEach(function (c) {
-    const chk = checks[Number(c && c.index)];
-    const name = 'check ' + (Number(c && c.index) + 1);
-    if (!chk) throw new Error('The checks on this report changed after it was opened. Pick the report again.');
-    if (out.some(function (x) { return x.index === chk.index; })) throw new Error('The funds for ' + name + ' were sent twice.');
-    const parts = (Array.isArray(c.parts) ? c.parts : []).map(function (p) {
-      const account = String((p && p.account) || '').trim();
-      if (accounts.indexOf(account) === -1) throw new Error('Pick a fund for ' + name + '.');
-      const amount = money_(p && p.amount, name);
-      if (amount === '') throw new Error('Enter how much of ' + name + ' goes to ' + account + '.');
-      return { account: account, amount: amount };
-    });
-    if (!parts.length || parts.length > 2) throw new Error('A check can go to one fund or be split between two.');
-    if (parts.length === 2 && parts[0].account === parts[1].account) throw new Error('Pick two different funds for ' + name + '.');
-    const total = parts.reduce(function (t, p) { return t + Math.round(p.amount * 100); }, 0);
-    if (total !== Math.round(chk.amount * 100)) {
-      throw new Error('The amounts for ' + name + ' need to add up to $' + chk.amount.toFixed(2) + '.');
-    }
-    if (parts.length === 1 && parts[0].account === GENERAL_ACCOUNT) return;
-    out.push({ index: chk.index, amount: chk.amount, parts: parts });
-  });
-  return out.sort(function (a, b) { return a.index - b.index; });
-}
-
 /** The first row of the office's section below the Designations, or 0 if the tab hasn't got one. */
 function officeExtrasRow_(sh) {
   const last = sh.getLastRow();
@@ -677,26 +616,16 @@ function officeExtrasRow_(sh) {
  * Reads back what writeOfficeExtras_ wrote: the office's designation amounts
  * as {groupTitle: [{label, amount}]} in report order, the cash given after
  * the count, and the additional designated and mission fund gifts (each null
- * if none was entered), and the designated checks as checkFunds_ returns them.
+ * if none was entered).
  */
 function readOfficeExtras_(sh) {
-  const out = { designations: {}, cash: null, addDesignated: null, addMission: null, checks: [] };
+  const out = { designations: {}, cash: null, addDesignated: null, addMission: null };
   const start = officeExtrasRow_(sh);
   if (!start) return out;
-  const rows = sh.getRange(start, 1, sh.getLastRow() - start + 1, 8).getValues();
+  const rows = sh.getRange(start, 1, sh.getLastRow() - start + 1, 4).getValues();
   let section = '', group = null;
   rows.forEach(function (v) {
     const a = String(v[0] || '').trim();
-    if (a === DES_CHECKS_TITLE) { section = a; return; }
-    if (section === DES_CHECKS_TITLE) {
-      // Check n | amount | fund | amount | fund | amount
-      const m = /^Check (\d+)/.exec(a);
-      if (!m) return;
-      const parts = [[2, 4], [5, 7]].filter(function (c) { return String(v[c[0]] || '').trim() && v[c[1]] !== ''; })
-        .map(function (c) { return { account: String(v[c[0]]).trim(), amount: Number(v[c[1]]) }; });
-      if (parts.length) out.checks.push({ index: Number(m[1]) - 1, amount: Number(v[1]) || 0, parts: parts });
-      return;
-    }
     const d = v[3] === '' || v[3] === null ? null : Number(v[3]);
     if (a === CASH_TITLE) { out.cash = d; section = a; return; }
     if (a === ADD_DESIGNATED_LABEL) { out.addDesignated = d; return; }
@@ -721,10 +650,9 @@ function readOfficeExtras_(sh) {
  * designation with the counted amount, the office's amount and the difference,
  * then the cash given after the count (for the record only) and the
  * additional designated and mission fund gifts, which Total Giving (D36) adds
- * in, then any checks the office designated. Replaces what an earlier
- * verification wrote.
+ * in. Replaces what an earlier verification wrote.
  */
-function writeOfficeExtras_(sh, groups, cash, additional, checks) {
+function writeOfficeExtras_(sh, groups, cash, additional) {
   let row = officeExtrasRow_(sh);
   if (row) {
     sh.getRange(row, 1, Math.max(sh.getLastRow() - row + 1, 1), 8).breakApart().clear();
@@ -803,32 +731,6 @@ function writeOfficeExtras_(sh, groups, cash, additional, checks) {
   sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+' + added.map(function (c) { return 'N(' + c + ')'; }).join('+'))
     .setNote('Total Offering + Online Giving + additional Designated and Mission Fund (' + added.join(', ') + '). ' +
       'Cash Unaccounted (' + cells[0] + ') is for the record only and isn\'t added.');
-
-  // Checks moved out of the general fund: Check | Amount | Fund (C:D) | Amount | Fund (F:G) | Amount
-  if (checks && checks.length) {
-    row++;
-    title(DES_CHECKS_TITLE);
-    range(3, 2).merge();
-    range(6, 2).merge();
-    style(8);
-    LOOK.header(range(1, 8));
-    [[1, 'Check'], [2, 'Amount'], [3, 'Fund'], [5, 'Amount'], [6, 'Fund'], [8, 'Amount']].forEach(function (c) { range(c[0]).setValue(c[1]); });
-    sh.setRowHeight(row++, 27);
-    checks.forEach(function (c) {
-      range(3, 2).merge();
-      range(6, 2).merge();
-      style(8);
-      const p = c.parts;
-      range(1).setValue('Check ' + (c.index + 1) + ' (' + CHECK_CELLS[c.index] + ')').setHorizontalAlignment('left');
-      range(2).setValue(c.amount);
-      range(3).setValue(clean_(p[0].account, 100)).setHorizontalAlignment('left').setWrap(true);
-      range(5).setValue(p[0].amount);
-      range(6).setValue(p[1] ? clean_(p[1].account, 100) : '').setHorizontalAlignment('left').setWrap(true);
-      range(8).setValue(p[1] ? p[1].amount : '');
-      [2, 5, 8].forEach(function (col) { money(col); });
-      sh.setRowHeight(row++, 27);
-    });
-  }
 }
 
 /**
@@ -885,8 +787,7 @@ function verifyReport_(body) {
         }),
       };
     });
-    const checkFunds = checkFunds_(sh, office.checkFunds);
-    writeOfficeExtras_(sh, groups, cash, additional, checkFunds);
+    writeOfficeExtras_(sh, groups, cash, additional);
     SpreadsheetApp.flush();
     recordWeek_(sh);
     SpreadsheetApp.flush();
@@ -900,7 +801,6 @@ function verifyReport_(body) {
       totalGiving: Number(sh.getRange(TOTAL_GIVING_CELL).getValue()) || 0,
       cash: cash === '' ? 0 : cash,
       additional: { designated: additional.designated || 0, mission: additional.mission || 0 },
-      designatedChecks: checkFunds.length,
     };
   } finally {
     lock.releaseLock();

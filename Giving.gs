@@ -14,8 +14,7 @@
  * date back from the tab.
  *
  * General fund for a week = the offering, less the designations that belong
- * to the Designated and Mission Fund groups and any checks the office moved
- * into them, plus online giving. (Cash
+ * to the Designated and Mission Fund groups, plus online giving. (Cash
  * Unaccounted is for the record only and isn't counted.) Which group a
  * designation belongs to is set below.
  */
@@ -148,20 +147,14 @@ function weekFigures_(sh) {
   designationsWithOffice_(sh).forEach(function (g) {
     g.items.forEach(function (x) { inOffering[fundOf_(x.label)] += c(x.office !== null ? x.office : x.amount); });
   });
-  // Checks the office designated, whole or in part.
-  const checks = { general: 0, designated: 0, mission: 0 };
-  extras.checks.forEach(function (chk) {
-    chk.parts.forEach(function (p) { checks[p.account === GENERAL_ACCOUNT ? 'general' : fundOf_(p.account)] += c(p.amount); });
-  });
   const online = verified ? c(sh.getRange(ONLINE_CELL).getValue()) : 0;
-  const general = offering - inOffering.designated - inOffering.mission - checks.designated - checks.mission;
+  const general = offering - inOffering.designated - inOffering.mission;
   return {
     generalFund: general / 100,           // the offering, less designated and mission fund gifts
     online: online / 100,
     subtotal: (general + online) / 100,
-    designated: (inOffering.designated + checks.designated + c(extras.addDesignated)) / 100,
-    mission: (inOffering.mission + checks.mission + c(extras.addMission)) / 100,
-    designatedChecks: (checks.designated + checks.mission) / 100,
+    designated: (inOffering.designated + c(extras.addDesignated)) / 100,
+    mission: (inOffering.mission + c(extras.addMission)) / 100,
   };
 }
 
