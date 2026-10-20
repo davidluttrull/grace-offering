@@ -138,6 +138,7 @@ function reportData_(sh, tz) {
   const cash = extras.cash || 0;
   const addDesignated = extras.addDesignated || 0;
   const addMission = extras.addMission || 0;
+  const checkFunds = extras.checks || [];
   const fmt = function (d, p) { return d instanceof Date ? Utilities.formatDate(d, tz, p) : ''; };
   // The Sunday this offering belongs to: the report date, or the Sunday before it.
   // ('u' is the ISO day number, 1 = Monday ... 7 = Sunday.)
@@ -169,6 +170,7 @@ function reportData_(sh, tz) {
     // Cash Unaccounted is for the record only, so it isn't in Total Giving.
     totalGiving: Math.round((offering + (online || 0) + addDesignated + addMission) * 100) / 100,
     designations: designationsWithOffice_(sh),
+    checkFunds: checkFunds,        // checks the office moved out of the general fund
     week: weekFigures_(sh),        // general fund, designated, mission fund (Giving.gs)
     giving: givingFor_(sh, tz),    // budget, year to date, balance from the giving tab
   };
@@ -403,6 +405,14 @@ function reportHtml_(d) {
     td_(money('Bills', d.bills), 'width:255pt') + '</tr>', W));
   h.push('<p style="margin:8pt 0 0;font-size:9pt"><b>Checks:</b> ' + d.checks.count + (d.checks.count === 1 ? ' check' : ' checks') +
     ' counted, totaling ' + usd_(d.checks.counted) + '. Office checks total: ' + usd_(d.checks.office) + '.</p>');
+  if (d.checkFunds.length) {
+    h.push(heading_('Designated Checks', 10));
+    h.push(caption_('Checks the business office moved out of the general fund. Checks not listed are general fund.'));
+    h.push(grid_([{ label: 'CHECK', width: 90 }, { label: 'AMOUNT', width: 80, right: true }, { label: 'FUNDS', width: 356 }],
+      d.checkFunds.map(function (c) {
+        return ['Check ' + (c.index + 1), usd_(c.amount), c.parts.map(function (p) { return esc_(p.account) + ' ' + usd_(p.amount); }).join(', ')];
+      })));
+  }
 
   // Designations side by side, listing only the ones that have an amount.
   // Once verified, each shows the office's amount beside the count.
@@ -479,7 +489,7 @@ function budgetHtml_(d, W) {
     ['<b>Year to date</b>', '<b>' + (g && g.ytd !== null ? usd_(g.ytd) : '—') + '</b>']];
   const rightStyles = [null, null, null, 'background:' + C_TINT];
   return heading_('Budget') +
-    caption_('General fund is the offering, less designated and mission fund gifts, plus online giving' +
+    caption_('General fund is the offering, less designated and mission fund gifts (envelopes and designated checks), plus online giving' +
       '. Year to date is the fiscal year' + (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
     table_('<tr>' + col('General Fund', left, leftStyles) + td_('', 'width:16pt') + col('Funds and Year to Date', right, rightStyles) + '</tr>', W);
 }
@@ -515,11 +525,17 @@ function emailText_(d, updated) {
     !d.verified ? 'Not verified yet.'
       : totalDiff === 0 ? 'The business office count matches the counters.'
       : 'The business office count differs from the counters by ' + diff_(d.office[3], d.counted[3]) + '.',
-  ], d.desDiffs ? [desDiffText_(d.desDiffs)] : [], [
+  ], d.desDiffs ? [desDiffText_(d.desDiffs)] : [], d.checkFunds.length ? [checkFundsText_(d)] : [], [
     'Counted by ' + (d.counters.join(', ') || 'no names given') + (d.verified ? '. Verified by ' + d.verifiedBy + '.' : '.'),
     '',
     'The full report is attached as a PDF.',
   ]).join('\n');
+}
+
+function checkFundsText_(d) {
+  const n = d.checkFunds.length;
+  return 'The business office designated ' + n + (n === 1 ? ' check' : ' checks') + ', moving ' + usd_(d.week.designatedChecks) +
+    ' out of the general fund. See the attached report.';
 }
 
 function desDiffText_(n) {
@@ -555,6 +571,7 @@ function emailHtml_(d, updated) {
     budgetLines_(d).map(function (l) { return row(l[0], l[1], l[0] === 'Year to date'); }).join('') + '</table>' +
     '<p style="margin:0 0 8px">' + status + '</p>' +
     (d.desDiffs ? '<p style="margin:0 0 8px;color:' + C_DIFF + ';font-weight:bold">' + desDiffText_(d.desDiffs) + '</p>' : '') +
+    (d.checkFunds.length ? '<p style="margin:0 0 8px">' + esc_(checkFundsText_(d)) + '</p>' : '') +
     '<p style="margin:0 0 12px;color:' + C_MUTED + '">Counted by ' + esc_(d.counters.join(', ') || 'no names given') +
     (d.verified ? '. Verified by ' + esc_(d.verifiedBy) + '.' : '.') + '</p>' +
     '<p style="margin:0">The full report is attached as a PDF.</p></div>';
