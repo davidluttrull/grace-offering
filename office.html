@@ -169,6 +169,16 @@
   table.totals td.diff { color: var(--diff); font-weight: 600; }
   table.totals td.match { color: var(--match); }
   table.totals tr.aside td { color: var(--muted); font-size: 14px; }
+  table.totals tr.section td {
+    padding-top: 16px;
+    border-top: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--brand-mid);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  @media (prefers-color-scheme: dark) { table.totals tr.section td { color: var(--brand); } }
 
   .notice {
     margin: 10px 0 0;
@@ -580,7 +590,7 @@
       box.append(h, cols, list);
       g.items.forEach((x) => {
         const input = line(list, 'des', x.label, FUND_NAMES[x.fund] || '', Math.round((x.amount || 0) * 100), x.office);
-        Object.assign(input.dataset, { group: g.title, label: x.label });
+        Object.assign(input.dataset, { group: g.title, label: x.label, fund: x.fund || '' });
       });
     });
     const sum = document.createElement('div');
@@ -613,6 +623,9 @@
   // Colors each office box green when it matches the count, amber when it doesn't.
   function recalc() {
     const sums = { coin: 0, bill: 0, checks: 0, des: 0 };
+    // Designation envelopes in the offering, by fund: the office's amount where
+    // it's entered, the count where it isn't (as the giving tab records it).
+    const inFund = { general: 0, designated: 0, mission: 0 };
     let differing = 0, desDiffering = 0, desEntered = false;
     $$('#view input[data-key]').forEach((input) => {
       const counted = Number(input.dataset.counted);
@@ -621,6 +634,7 @@
       input.classList.remove('match', 'diff');
       note.className = 'note';
       note.hidden = true;
+      if (input.dataset.fund) inFund[input.dataset.fund] += office !== null ? office : counted;
       if (office !== null) {
         const kind = input.dataset.key.split(':')[0];
         sums[kind] += office;
@@ -655,6 +669,16 @@
       extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td><td></td></tr>').join('') +
       '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + other) + '</td><td></td></tr>' +
       (cash ? '<tr class="aside"><td>Cash unaccounted (record only)</td><td></td><td>' + usd(cash) + '</td><td></td></tr>' : '');
+    // General fund, as the bulletin and the giving tab figure it.
+    const general = office[3] - inFund.designated - inFund.mission + online;
+    if (report.designations) {
+      $('#totals').insertAdjacentHTML('beforeend', '<tr class="section"><td colspan="4">General fund</td></tr>' +
+        '<tr><td>Total Offering</td><td></td><td>' + usd(office[3]) + '</td><td></td></tr>' +
+        '<tr><td>Less designated</td><td></td><td>' + (inFund.designated ? '−' : '') + usd(inFund.designated) + '</td><td></td></tr>' +
+        '<tr><td>Less mission fund</td><td></td><td>' + (inFund.mission ? '−' : '') + usd(inFund.mission) + '</td><td></td></tr>' +
+        '<tr><td>Online giving</td><td></td><td>' + usd(online) + '</td><td></td></tr>' +
+        '<tr class="grand"><td>General Fund Total</td><td></td><td>' + usd(general) + '</td><td></td></tr>');
+    }
     if (report.designations) {
       const desCounted = report.designations.reduce((t, g) => t + g.items.reduce((s, x) => s + Math.round((x.amount || 0) * 100), 0), 0);
       const desNote = $('#desNote');
@@ -668,7 +692,7 @@
     const totalDiff = office[3] - Math.round(counted[3] * 100);
     $('#barTotal').textContent = usd(office[3]);
     $('#barDiff').textContent = totalDiff === 0 ? '✓ matches' : diffText(totalDiff) + ' vs. count';
-    return { office, counted, totalDiff, differing, desDiffering, online, cash, extra };
+    return { office, counted, totalDiff, differing, desDiffering, online, cash, extra, general: report.designations ? general : null };
   }
 
   function collect() {
@@ -718,7 +742,7 @@
     });
   }
 
-  function totalsTable(counted, office, online, cash, extra) {
+  function totalsTable(counted, office, online, cash, extra, general) {
     extra = extra || [];
     const names = ['Coins', 'Bills', 'Checks', 'Total Offering'];
     return '<table class="totals"><thead><tr><th></th><th>Counted</th><th>Office</th></tr></thead><tbody>' +
@@ -727,6 +751,7 @@
       extra.filter((x) => x[1]).map((x) => '<tr><td>' + x[0] + '</td><td></td><td>' + usd(x[1]) + '</td></tr>').join('') +
       '<tr class="grand"><td>Total Giving</td><td></td><td>' + usd(office[3] + online + extra.reduce((t, x) => t + x[1], 0)) + '</td></tr>' +
       (cash ? '<tr class="aside"><td>Cash unaccounted (record only)</td><td></td><td>' + usd(cash) + '</td></tr>' : '') +
+      (general === null || general === undefined ? '' : '<tr class="grand"><td>General Fund Total</td><td></td><td>' + usd(general) + '</td></tr>') +
       '</tbody></table>';
   }
 
@@ -756,7 +781,7 @@
       : '<p>Every amount you entered matches the count.</p>';
     const ok = await dialog({
       title: 'Save verification for ' + report.tab + '?',
-      body: totalsTable(counted, t.office, t.online, t.cash, t.extra) + warn + '<p>Saving also emails the report to the staff.</p>',
+      body: totalsTable(counted, t.office, t.online, t.cash, t.extra, t.general) + warn + '<p>Saving also emails the report to the staff.</p>',
       ok: 'Save',
       cancel: 'Go back',
     });
@@ -781,7 +806,8 @@
       title: 'Verification saved',
       body: totalsTable(res.counted.map((v) => Math.round(v * 100)), res.office.map((v) => Math.round(v * 100)), Math.round((res.online || 0) * 100),
         Math.round((res.cash || 0) * 100),
-        [['Additional designated', Math.round(((res.additional || {}).designated || 0) * 100)], ['Additional mission fund', Math.round(((res.additional || {}).mission || 0) * 100)]]) +
+        [['Additional designated', Math.round(((res.additional || {}).designated || 0) * 100)], ['Additional mission fund', Math.round(((res.additional || {}).mission || 0) * 100)]],
+        t.general) +
         '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>' + emailNote(res.emailed) +
         // An older script ignores online giving and doesn't email; it doesn't send totalGiving back.
         (res.totalGiving === undefined
