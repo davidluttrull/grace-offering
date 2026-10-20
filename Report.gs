@@ -270,12 +270,27 @@ function eGrid_(cols, rows, styles, size) {
   return eTable_(head + body);
 }
 
+/**
+ * One of two side-by-side slots in a card (eRow_). Each is up to 304px wide
+ * with 8px of padding on both sides, so two fit across the 608px inside a
+ * card with a 16px gap, and one alone sits centered on a phone.
+ */
+function eSlot_(html, style) {
+  return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:304px;text-align:left;' + (style || '') + '">' +
+    eTable_('<tr><td style="padding:0 8px">' + html + '</td></tr>') + '</div>';
+}
+
+/** A row of slots: side by side when there's room, stacked and centered when there isn't. */
+function eRow_(slots) {
+  return '<div style="font-size:0;line-height:0;text-align:center;margin:0 -8px">' + slots + '</div>';
+}
+
 /** Two columns side by side, stacking on narrow screens. */
 function eColumns_(left, right) {
   const col = function (html) {
-    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:290px;font-size:14px;line-height:1.4">' + html + '</div>';
+    return eSlot_(html, 'font-size:14px;line-height:1.4');
   };
-  return '<div style="font-size:0;line-height:0">' + col(left) + '<div style="display:inline-block;width:20px;height:8px"></div>' + col(right) + '</div>';
+  return eRow_(col(left) + col(right));
 }
 
 /** A difference cell: green "Matches", amber amount, or a dash when the office left it blank. */
@@ -330,9 +345,8 @@ function reportHtml_(d, updated) {
   const ytdBalance = g ? g.balance : null;
   const signed = function (n) { return n === null || n === undefined ? '—' : (n < 0 ? '−' : '+') + usd_(Math.abs(n)); };
   const box = function (inner, bg, border) {
-    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:290px;margin-top:10px">' +
-      eTable_('<tr><td style="' + FONT + 'padding:12px 14px;line-height:1.3;background:' + bg + ';border:1px solid ' + border +
-        ';border-radius:12px;height:96px;vertical-align:top">' + inner + '</td></tr>', 'border-collapse:separate') + '</div>';
+    return eSlot_(eTable_('<tr><td style="' + FONT + 'padding:12px 14px;line-height:1.3;background:' + bg + ';border:1px solid ' + border +
+        ';border-radius:12px;height:96px;vertical-align:top">' + inner + '</td></tr>', 'border-collapse:separate'), 'margin-top:10px');
   };
   const label = function (text, color) {
     return '<p style="margin:0;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:' + color + '">' + esc_(text) + '</p>';
@@ -382,7 +396,7 @@ function reportHtml_(d, updated) {
     eTable_(split('In-person', inPerson, T.deep) + split('Online', online, T.brand), 'margin-top:6px') + bar, '#FFFFFF', T.line);
 
   const pair = function (left, right) {
-    return '<div style="font-size:0;line-height:0">' + left + '<div style="display:inline-block;width:20px;height:1px"></div>' + right + '</div>';
+    return eRow_(left + right);
   };
   const status = !d.verified ? '<span style="color:' + T.muted + '">Not verified yet. These are the counters’ figures.</span>'
     : totalDiff === 0 ? '<span style="color:' + T.match + '">✓ The business office count matches the counters.</span>'
