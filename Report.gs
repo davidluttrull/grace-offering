@@ -64,7 +64,7 @@ function emailReport_(sh, recipients, updated) {
     MailApp.sendEmail({
       to: recipients.join(','),
       subject: (updated ? 'Updated offering report for ' : 'Offering report for ') + d.forShort +
-        ' (' + usd_(d.totalGiving) + ' total giving)',
+        ' (' + usd_(d.week.subtotal) + ' general fund)',
       htmlBody: reportHtml_(d, updated),
       body: emailText_(d, updated),
       name: 'Grace Offering',
