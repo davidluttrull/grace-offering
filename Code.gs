@@ -138,6 +138,8 @@ function json_(value) {
  * one), moves it to the end, and creates a counter code, shown in the
  * Execution log. Safe to run again: an existing Template is only emptied of
  * numbers. To rebuild it from scratch, delete the Template tab and run setup.
+ * It also gives every tab the web pages' look; report tabs from before that
+ * are restyled once, with their numbers left as they are.
  */
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -151,11 +153,17 @@ function setup() {
     buildTemplate_(template);
   }
   ensureOnlineRows_(template);
+  styleReport_(template);
   template.getRangeList(inputCells_().concat(OFFICE_CELLS)).clearContent();
   // Each report lays out its own Designations section below the title.
   template.getRange('A' + DESIGNATIONS_ROW + ':H' + (DESIGNATIONS_ROW + 60)).breakApart().clear();
-  ensureEmailsTab_();
+  styleEmailsTab_(ensureEmailsTab_());
   ensureGivingTab_(fiscalYear_(new Date()));
+  ss.getSheets().forEach(function (sh) {
+    const name = sh.getName();
+    if (name.indexOf(GIVING_TAB_PREFIX) === 0) styleGivingTab_(sh);
+    else if (name !== TEMPLATE_NAME && sh.getRange('A1').getValue() === TITLE && !isStyled_(sh)) restyleReport_(sh);
+  });
   ss.setActiveSheet(template);
   ss.moveActiveSheet(ss.getNumSheets());
 
@@ -172,99 +180,163 @@ function setup() {
 
 /**
  * Lays out the church's offering report (rows 1-37) on an empty tab: the same
- * text, formulas, colors, borders, number formats, row heights and column
- * widths as the paper report. Green cells are the ones the page fills in.
+ * text, formulas, number formats, row heights and column widths as the paper
+ * report, styled like the web pages by styleReport_. Green cells are the ones
+ * the page fills in.
  */
 function buildTemplate_(sheet) {
-  const GREEN = '#D9EAD3';
-  const GRAY = '#D9D9D9';
-  const DOLLARS = AMOUNT_FORMAT;
   const r = function (a1) { return sheet.getRange(a1); };
-  const box = function (a1) { return r(a1).setBorder(true, true, true, true, true, true); };
-  const header = function (a1) {
-    return r(a1).setBackground(GRAY).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
-  };
-
-  r('A1:H40').setFontFamily('Arial').setFontSize(11).setVerticalAlignment('bottom');
-  [129, 129, 129, 129, 129, 48, 129, 129].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
-  const heights = { 1: 50, 4: 29, 5: 29, 7: 31, 8: 43, 16: 35, 19: 43, 27: 35, 30: 43, 34: 35 };
-  for (let row = 1; row <= 37; row++) sheet.setRowHeight(row, heights[row] || (row >= 9 && row <= 33 && row !== 17 && row !== 18 && row !== 28 && row !== 29 ? 27 : 21));
-
-  // Title, date, instructions
-  r('A1:H1').merge().setValue(TITLE)
-    .setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  r('A1').setValue(TITLE);
   r('A4').setValue('Report Date:');
-  r('B4:C4').merge().setBackground(GREEN).setHorizontalAlignment('right').setNumberFormat('M/d/yyyy')
-    .setBorder(null, null, true, null, null, null);
-  r('A7:H7').merge().setValue('Instructions:  Enter amounts and text in the green cells only').setFontSize(10);
+  r('A7').setValue('Instructions:  Enter amounts and text in the green cells only');
 
   // Coins (rows 8-16) and bills (rows 19-27)
   [[8, 'Coins', COINS, 16, 'Total Coins'], [19, 'Bills', BILLS, 27, 'Total Bills']].forEach(function (block) {
     const top = block[0], list = block[2], total = block[3];
     r('A' + top + ':E' + top).setValues([[block[1], 'Quantity', 'Value', 'Amount', 'Business Office Only']]);
-    header('A' + top + ':E' + top);
-    r('E' + top).setWrap(true);
     list.forEach(function (item, i) {
       const row = top + 1 + i;
-      r('A' + row).setValue(item.name).setHorizontalAlignment('left');
+      r('A' + row).setValue(item.name);
       r('C' + row).setValue(item.value);
       r('D' + row).setFormula('=B' + row + '*C' + row);
     });
-    const first = top + 1, last = top + list.length;
-    r('B' + first + ':B' + last).setBackground(GREEN).setHorizontalAlignment('right');
-    r('C' + first + ':D' + last).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-    r('E' + first + ':E' + last).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-    box('A' + top + ':E' + (block[1] === 'Coins' ? top + 7 : total));
     r('A' + total).setValue(block[4]);
-    header('A' + total + ':E' + total);
-    r('D' + total).setFormula('=sum(D' + first + ':D' + last + ')').setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-    box('A' + total + ':E' + total);
+    r('D' + total).setFormula('=sum(D' + (top + 1) + ':D' + (top + list.length) + ')');
   });
-  r('E16').setFormula('=SUM(E9:E14)').setNumberFormat(DOLLARS).setHorizontalAlignment('right').setFontWeight('normal');
-  r('E27').setFormula('=SUM(E20:E26)').setNumberFormat(DOLLARS).setHorizontalAlignment('right').setFontWeight('normal');
+  r('E16').setFormula('=SUM(E9:E14)');
+  r('E27').setFormula('=SUM(E20:E26)');
 
-  // Checks: G9:H26, with G17:G18 and H17:H18 merged
-  r('G8:H8').merge().setValue('Checks');
-  header('G8:H8');
-  r('G17:G18').merge();
-  r('H17:H18').merge();
-  r('G9:H26').setBackground(GREEN).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-  box('G8:H27');
-  header('G27:H27');
-  r('H27').setFormula('=sum(G9:G26)+sum(H9:H26)').setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+  r('G8').setValue('Checks');
+  r('H27').setFormula('=sum(G9:G26)+sum(H9:H26)');
 
-  // Totals and counters
-  r('B30:D30').merge().setValue('Totals');
-  header('B30:D30');
-  r('B31:B34').setValues([['Coins'], ['Bills'], ['Checks'], ['Total Offering']]).setHorizontalAlignment('left');
+  r('B30').setValue('Totals');
+  r('B31:B34').setValues([['Coins'], ['Bills'], ['Checks'], ['Total Offering']]);
   r('C31:C34').setFormulas([['=D16'], ['=D27'], ['=H27'], ['=sum(C31:C33)']]);
   r('D31:D32').setFormulas([['=E16'], ['=E27']]);
   r('D34').setFormula('=SUM(D31:D33)');
+  r('G30').setValue('Name of Counters');
+  r('G35').setValue('Verified By');   // filled in from the business office's page
+  r('A37').setValue('Designations');  // setup and each report fill in the rows below it
+  styleReport_(sheet);
+}
+
+// The web pages' light theme, for the Sheet: Poppins, the dark green title
+// bar, medium green headings, soft green borders. Light green cells are still
+// the ones the counters fill in.
+const THEME = {
+  font: 'Poppins',
+  deep: '#233617',    // title bar and grand totals
+  brand: '#7BAE58',   // heading underlines and tab color
+  mid: '#4E7A35',     // heading text
+  ink: '#1E2A16',
+  muted: '#5B6A50',
+  line: '#C6DBB6',    // borders
+  soft: '#F3F8EF',    // subtotal rows and cells nobody fills in
+  input: '#E2F0D9',   // the counters' green cells
+  match: '#3D7A28',
+  diff: '#8A5200',
+  diffBg: '#FFF4E0',
+};
+
+/** Shared cell styles for THEME. Each takes a Range and returns it. */
+const LOOK = {
+  box: function (rg) { return rg.setBorder(true, true, true, true, true, true, THEME.line, SpreadsheetApp.BorderStyle.SOLID); },
+  // Column headings: medium green bold text with a brand green rule under it.
+  header: function (rg) {
+    return rg.setBackground('#FFFFFF').setFontColor(THEME.mid).setFontWeight('bold').setHorizontalAlignment('center')
+      .setVerticalAlignment('middle').setBorder(null, null, true, null, null, null, THEME.brand, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  },
+  subtotal: function (rg) { return rg.setBackground(THEME.soft).setFontColor(THEME.ink).setFontWeight('bold'); },
+  grand: function (rg) { return rg.setBackground(THEME.deep).setFontColor('#FFFFFF').setFontWeight('bold'); },
+  title: function (rg) {
+    return rg.setFontFamily(THEME.font).setFontSize(14).setFontWeight('bold').setFontColor(THEME.mid)
+      .setHorizontalAlignment('center').setVerticalAlignment('middle')
+      .setBorder(true, null, null, null, null, null, THEME.brand, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  },
+};
+
+/**
+ * The look of rows 1-37 of a report tab or the Template. Formatting only: it
+ * never changes a value, so it's safe to run on report tabs already filled in.
+ */
+function styleReport_(sheet) {
+  const T = THEME;
+  const DOLLARS = AMOUNT_FORMAT;
+  const r = function (a1) { return sheet.getRange(a1); };
+
+  sheet.setHiddenGridlines(true);
+  sheet.setTabColor(T.brand);
+  r('A1:H37').setFontFamily(T.font).setFontSize(11).setFontColor(T.ink).setVerticalAlignment('middle');
+  [129, 129, 129, 129, 129, 48, 129, 129].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
+  const heights = { 1: 50, 4: 29, 5: 29, 7: 31, 8: 43, 16: 35, 19: 43, 27: 35, 30: 43, 34: 35, 35: 27, 36: 27, 37: 31 };
+  for (let row = 1; row <= 37; row++) sheet.setRowHeight(row, heights[row] || (row >= 9 && row <= 33 && row !== 17 && row !== 18 && row !== 28 && row !== 29 ? 27 : 21));
+
+  // Title bar, date, instructions
+  r('A1:H1').merge().setBackground(T.deep).setFontColor('#FFFFFF').setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center');
+  r('A4').setFontWeight('bold');
+  r('B4:C4').merge().setBackground(T.input).setHorizontalAlignment('right').setNumberFormat('M/d/yyyy')
+    .setBorder(null, null, true, null, null, null, T.brand, SpreadsheetApp.BorderStyle.SOLID);
+  r('A7:H7').merge().setFontSize(10).setFontColor(T.muted);
+
+  // Coins (rows 8-16) and bills (rows 19-27)
+  [[8, COINS, 16], [19, BILLS, 27]].forEach(function (block) {
+    const top = block[0], first = top + 1, last = top + block[1].length, total = block[2];
+    LOOK.box(r('A' + top + ':E' + total));
+    LOOK.header(r('A' + top + ':E' + top));
+    r('E' + top).setWrap(true);
+    r('A' + first + ':A' + last).setHorizontalAlignment('left');
+    r('B' + first + ':B' + last).setBackground(T.input).setHorizontalAlignment('right');
+    r('C' + first + ':E' + last).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+    LOOK.subtotal(r('A' + total + ':E' + total)).setHorizontalAlignment('center');
+    r('D' + total + ':E' + total).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+    r('E' + total).setFontWeight('normal');
+  });
+
+  // Checks: G9:H26, with G17:G18 and H17:H18 merged
+  r('G8:H8').merge();
+  r('G17:G18').merge();
+  r('H17:H18').merge();
+  LOOK.box(r('G8:H27'));
+  LOOK.header(r('G8:H8'));
+  r('G9:H26').setBackground(T.input).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+  LOOK.subtotal(r('G27:H27'));
+  r('H27').setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+
+  // Totals: Total Offering is dark green like the pages' bottom bar.
+  r('B30:D30').merge();
+  LOOK.box(r('B30:D34'));
+  LOOK.header(r('B30:D30'));
+  r('B31:B34').setHorizontalAlignment('left');
   r('C31:D34').setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-  header('B34:D34');
-  r('B34').setHorizontalAlignment('center');
-  r('C34:D34').setHorizontalAlignment('right');
-  r('D34').setFontWeight('normal');
-  box('B30:D34');
-  r('G30:H30').merge().setValue('Name of Counters');
-  header('G30:H30');
+  LOOK.grand(r('B34:D34'));
+
+  // Counters and Verified By
+  r('G30:H30').merge();
   ['G31:H31', 'G32:H32', 'G33:H33', 'G34:H34'].forEach(function (a1) { r(a1).merge(); });
-  r('G31:H33').setBackground(GREEN).setHorizontalAlignment('left');
-  box('G30:H33');
-  // Filled in from the business office's page.
-  r('G35:H35').merge().setValue('Verified By');
-  header('G35:H35');
+  LOOK.box(r('G30:H33'));
+  LOOK.header(r('G30:H30'));
+  r('G31:H33').setBackground(T.input).setHorizontalAlignment('left');
+  r('G35:H35').merge();
+  LOOK.box(r('G35:H36'));
+  LOOK.header(r('G35:H35'));
   r('G36').setHorizontalAlignment('left');
   r('H36').setNumberFormat('M/d/yyyy').setHorizontalAlignment('right');
-  box('G35:H36');
-  sheet.setRowHeight(35, 27);
-  sheet.setRowHeight(36, 27);
-  r('A30').setFontWeight('bold');
-  r('A34').setFontWeight('bold');
 
-  // Designations title; setup and each report fill in the rows below it.
-  r('A37:H37').merge().setValue('Designations').setFontSize(14).setHorizontalAlignment('center')
-    .setBorder(true, null, null, null, null, null);
+  LOOK.title(r('A37:H37').merge());
+  if (r('B35').getValue() === 'Online Giving') styleOnlineRows_(sheet);
+}
+
+/** The look of the Online Giving and Total Giving rows (B35:D36) and the note beside them. */
+function styleOnlineRows_(sheet) {
+  const r = function (a1) { return sheet.getRange(a1); };
+  r('B35:F36').setFontFamily(THEME.font).setFontSize(11).setFontColor(THEME.ink).setVerticalAlignment('middle');
+  LOOK.box(r('B35:D36'));
+  r('B35:B36').setHorizontalAlignment('left');
+  r('C35').setBackground(THEME.soft);   // the counters don't count online giving
+  r('D35:D36').setNumberFormat(AMOUNT_FORMAT).setHorizontalAlignment('right');
+  LOOK.grand(r('B36:D36'));
+  r('E35:F36').merge().setFontSize(9).setFontStyle('italic').setFontColor(THEME.muted).setWrap(true)
+    .setVerticalAlignment('top').setHorizontalAlignment('left');
 }
 
 /**
@@ -274,16 +346,45 @@ function buildTemplate_(sheet) {
  */
 function ensureOnlineRows_(sheet) {
   if (sheet.getRange('B35').getValue() === 'Online Giving') return;
-  const r = function (a1) { return sheet.getRange(a1); };
-  r('B35:D36').setFontFamily('Arial').setFontSize(11).setVerticalAlignment('middle');
-  r('B35:B36').setValues([['Online Giving'], ['Total Giving']]).setHorizontalAlignment('left');
-  r('C35').setBackground('#F3F3F3');   // the counters don't count online giving
-  r(ONLINE_CELL).setNumberFormat(AMOUNT_FORMAT).setHorizontalAlignment('right');
-  r('B36:D36').setBackground('#D9D9D9').setFontWeight('bold');
-  r(TOTAL_GIVING_CELL).setFormula('=D34+D35').setNumberFormat(AMOUNT_FORMAT).setHorizontalAlignment('right');
-  r('B35:D36').setBorder(true, true, true, true, true, true);
-  r('E35:F36').merge().setFontFamily('Arial').setFontSize(9).setFontStyle('italic').setWrap(true)
-    .setVerticalAlignment('top').setHorizontalAlignment('left');
+  sheet.getRange('B35:B36').setValues([['Online Giving'], ['Total Giving']]);
+  sheet.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35');
+  styleOnlineRows_(sheet);
+}
+
+/**
+ * Restyles a report tab made before the Sheet matched the web pages. Rows
+ * 1-37 are reformatted in place; the Designations and the office's section
+ * below them are read and laid out again with the same values.
+ */
+function restyleReport_(sh) {
+  const groups = readDesignations_(sh);
+  const hadOffice = officeExtrasRow_(sh) > 0;
+  const office = hadOffice ? designationsWithOffice_(sh) : null;
+  const extras = readOfficeExtras_(sh);
+  styleReport_(sh);
+  const last = sh.getLastRow();
+  if (last >= DESIGNATIONS_ROW) sh.getRange(DESIGNATIONS_ROW, 1, last - DESIGNATIONS_ROW + 1, 8).breakApart().clear();
+  const blank = function (v) { return v === null || v === undefined ? '' : v; };
+  writeDesignations_(sh, groups.map(function (g) {
+    return { title: g.title, items: g.items.map(function (x) { return { label: clean_(x.label, 100), amount: blank(x.amount) }; }) };
+  }));
+  if (hadOffice) {
+    writeOfficeExtras_(sh, office, blank(extras.cash), { designated: blank(extras.addDesignated), mission: blank(extras.addMission) });
+  }
+}
+
+/** The Report Emails tab in the web pages' font and colors. */
+function styleEmailsTab_(tab) {
+  tab.getRange(1, 1, Math.max(tab.getLastRow(), 20), 2).setFontFamily(THEME.font).setFontSize(10).setFontColor(THEME.ink);
+  tab.getRange(1, 1).setFontWeight('bold').setFontColor('#FFFFFF').setBackground(THEME.deep);
+  tab.getRange(1, 2).setFontColor(THEME.muted).setFontStyle('italic');
+  tab.setRowHeight(1, 30);
+  tab.setTabColor(THEME.muted);
+}
+
+/** True once a report tab or the Template has the web pages' look (its title bar is dark green). */
+function isStyled_(sh) {
+  return String(sh.getRange('A1').getBackground()).toLowerCase() === THEME.deep.toLowerCase();
 }
 
 /** Every green cell the page fills in. */
@@ -383,21 +484,18 @@ function writeDesignations_(sheet, groups) {
   let row = DESIGNATIONS_ROW;
   groups.forEach(function (g, gi) {
     if (gi > 0) row++;   // blank row between the groups
-    sheet.getRange(row, 1, 1, 8).merge().setValue(g.title)
-      .setFontFamily('Arial').setFontSize(11).setFontWeight('bold')
-      .setHorizontalAlignment('center').setVerticalAlignment('middle')
-      .setBackground('#D9D9D9').setBorder(true, true, true, true, null, null);
+    LOOK.header(sheet.getRange(row, 1, 1, 8).merge().setValue(g.title)
+      .setFontFamily(THEME.font).setFontSize(11));
     sheet.setRowHeight(row, 27);
     row++;
     for (let i = 0; i < g.items.length; i += 3) {
       sheet.getRange(row, 6, 1, 2).merge();
-      sheet.getRange(row, 1, 1, 7)
-        .setFontFamily('Arial').setFontSize(11).setVerticalAlignment('middle')
-        .setBorder(true, true, true, true, true, true);
+      LOOK.box(sheet.getRange(row, 1, 1, 7)
+        .setFontFamily(THEME.font).setFontSize(11).setFontColor(THEME.ink).setVerticalAlignment('middle'));
       g.items.slice(i, i + 3).forEach(function (item, j) {
         sheet.getRange(row, 1 + 2 * j).setValue(item.label).setHorizontalAlignment('left').setWrap(true);
         sheet.getRange(row, 2 + 2 * j).setValue(item.amount).setNumberFormat(AMOUNT_FORMAT)
-          .setHorizontalAlignment('right').setBackground('#D9EAD3');
+          .setHorizontalAlignment('right').setBackground(THEME.input);
       });
       row++;
     }
@@ -555,8 +653,6 @@ function readOfficeExtras_(sh) {
  * earlier verification wrote.
  */
 function writeOfficeExtras_(sh, groups, cash, additional) {
-  const GRAY = '#D9D9D9';
-  const LIGHT = '#F3F3F3';
   let row = officeExtrasRow_(sh);
   if (row) {
     sh.getRange(row, 1, Math.max(sh.getLastRow() - row + 1, 1), 8).breakApart().clear();
@@ -565,17 +661,16 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   }
   const range = function (col, cols) { return sh.getRange(row, col, 1, cols || 1); };
   const style = function (cols) {
-    return range(1, cols).setFontFamily('Arial').setFontSize(11).setVerticalAlignment('middle')
-      .setBorder(true, true, true, true, true, true);
+    return LOOK.box(range(1, cols).setFontFamily(THEME.font).setFontSize(11).setFontColor(THEME.ink).setVerticalAlignment('middle'));
   };
   const title = function (text) {
-    range(1, 8).merge().setValue(text).setFontFamily('Arial').setFontSize(14)
-      .setHorizontalAlignment('center').setVerticalAlignment('middle').setBorder(true, null, null, null, null, null);
+    LOOK.title(range(1, 8).merge().setValue(text));
     sh.setRowHeight(row++, 31);
   };
   const heading = function (cols, merge, cells) {
     range(1, merge).merge();
-    style(cols).setBackground(GRAY).setFontWeight('bold').setHorizontalAlignment('center');
+    style(cols);
+    LOOK.header(range(1, cols));
     cells.forEach(function (c) { range(c[0]).setValue(c[1]); });
     sh.setRowHeight(row++, 27);
   };
@@ -587,7 +682,7 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   const first = row;
   groups.forEach(function (g) {
     range(1, 5).merge();
-    style(5).setBackground(LIGHT).setFontWeight('bold').setHorizontalAlignment('left');
+    style(5).setFontWeight('bold').setFontColor(THEME.mid).setHorizontalAlignment('left');
     range(1).setValue(g.title);
     row++;
     g.items.forEach(function (x) {
@@ -602,12 +697,21 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   });
   const last = row - 1;
   range(1, 2).merge();
-  style(5).setBackground(GRAY).setFontWeight('bold');
+  LOOK.subtotal(style(5));
   range(1).setValue(DES_TOTAL_LABEL).setHorizontalAlignment('left');
   range(3, 3).setFormulas([['=SUM(C' + first + ':C' + last + ')',
     '=IF(COUNT(D' + first + ':D' + last + ')=0,"",SUM(D' + first + ':D' + last + '))',
     '=IF(D' + row + '="","",D' + row + '-C' + row + ')']]);
   money(3, 3);
+  // Differences: green when they match, amber when they don't, like the page.
+  const diffs = sh.getRange(first, 5, row - first + 1, 1);
+  sh.setConditionalFormatRules(sh.getConditionalFormatRules().filter(function (rule) {
+    return !rule.getRanges().some(function (rg) { return rg.getRow() >= DESIGNATIONS_ROW; });
+  }).concat([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberNotEqualTo(0).setFontColor(THEME.diff).setBackground(THEME.diffBg)
+      .setBold(true).setRanges([diffs]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(0).setFontColor(THEME.match).setRanges([diffs]).build(),
+  ]));
   row += 2;
 
   // Cash given after the count, then the additional online gifts: label in A:C, amount in D.
@@ -615,7 +719,7 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   [[CASH_TITLE, cash], [ADD_DESIGNATED_LABEL, additional.designated], [ADD_MISSION_LABEL, additional.mission]].forEach(function (x) {
     range(1, 3).merge();
     style(4);
-    range(1, 3).setBackground(GRAY).setFontWeight('bold');
+    LOOK.subtotal(range(1, 3));
     range(1).setValue(x[0]).setHorizontalAlignment('left');
     range(4).setValue(x[1]);
     money(4);

@@ -70,15 +70,11 @@ function ensureGivingTab_(year) {
   const budget = prior ? Number(prior.getRange(GIVING_BUDGET_CELL).getValue()) || DEFAULT_WEEKLY_BUDGET : DEFAULT_WEEKLY_BUDGET;
 
   tab = ss.insertSheet(name, Math.max(ss.getNumSheets() - 1, 0));
-  const r = function (a1) { return tab.getRange(a1); };
-  r('A1:H1').merge().setValue(name).setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center');
-  r('A2').setValue('Weekly budget').setFontWeight('bold');
-  r(GIVING_BUDGET_CELL).setValue(budget).setNumberFormat(AMOUNT_FORMAT).setBackground('#D9EAD3')
-    .setBorder(true, true, true, true, null, null);
-  r('C2:H2').merge().setValue('Change B2 when the budget is set. Verifying a report fills in that Sunday\'s WK GEN FUND.')
-    .setFontSize(9).setFontStyle('italic').setFontColor('#6B6B6B');
-  tab.getRange(GIVING_HEADER_ROW, 1, 1, GIVING_HEADERS.length).setValues([GIVING_HEADERS])
-    .setBackground('#D9D9D9').setFontWeight('bold').setHorizontalAlignment('center');
+  tab.getRange('A1').setValue(name);
+  tab.getRange('A2').setValue('Weekly budget');
+  tab.getRange(GIVING_BUDGET_CELL).setValue(budget);
+  tab.getRange('C2').setValue('Change B2 when the budget is set. Verifying a report fills in that Sunday\'s WK GEN FUND.');
+  tab.getRange(GIVING_HEADER_ROW, 1, 1, GIVING_HEADERS.length).setValues([GIVING_HEADERS]);
 
   // Every Sunday from the first one in July through the end of June.
   const sundays = [];
@@ -90,16 +86,50 @@ function ensureGivingTab_(year) {
     return [i + 1, d, '=IF(A' + n + '="","",A' + n + '*$B$2)', '', '=IF(D' + n + '="","",SUM(D$' + GIVING_FIRST_ROW + ':D' + n + '))',
       '', '=IF(OR(D' + n + '="",F' + n + '<>""),"",E' + n + '-C' + n + ')', ''];
   });
-  const body = tab.getRange(GIVING_FIRST_ROW, 1, rows.length, GIVING_HEADERS.length);
-  body.setValues(rows);
-  tab.getRange(GIVING_HEADER_ROW, 1, rows.length + 1, GIVING_HEADERS.length).setBorder(true, true, true, true, true, true);
-  tab.getRange(GIVING_FIRST_ROW, 2, rows.length, 1).setNumberFormat('M/d/yyyy');
-  tab.getRange(GIVING_FIRST_ROW, 3, rows.length, 5).setNumberFormat(AMOUNT_FORMAT);
-  tab.getRange(GIVING_FIRST_ROW, 1, rows.length, 1).setHorizontalAlignment('center');
-  tab.getRange(1, 1, GIVING_FIRST_ROW + rows.length, GIVING_HEADERS.length).setFontFamily('Arial');
-  [60, 90, 115, 115, 115, 80, 115, 130].forEach(function (w, i) { tab.setColumnWidth(i + 1, w); });
+  tab.getRange(GIVING_FIRST_ROW, 1, rows.length, GIVING_HEADERS.length).setValues(rows);
   tab.setFrozenRows(GIVING_HEADER_ROW);
+  styleGivingTab_(tab);
   return tab;
+}
+
+/**
+ * The giving tab's look, matching the web pages (THEME in Code.gs). Formatting
+ * only, so it's safe on a tab already filled in, including rows added by hand.
+ * Balances are green when over budget and amber when under.
+ */
+function styleGivingTab_(tab) {
+  const n = Math.max(tab.getLastRow() - GIVING_FIRST_ROW + 1, 1);
+  const r = function (a1) { return tab.getRange(a1); };
+  tab.setHiddenGridlines(true);
+  tab.setTabColor(THEME.deep);
+  tab.getRange(1, 1, GIVING_FIRST_ROW + n - 1, GIVING_HEADERS.length)
+    .setFontFamily(THEME.font).setFontSize(10).setFontColor(THEME.ink).setVerticalAlignment('middle');
+  r('A1:H1').merge().setBackground(THEME.deep).setFontColor('#FFFFFF').setFontSize(14).setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  tab.setRowHeight(1, 40);
+  r('A2').setFontWeight('bold').setFontColor(THEME.mid);
+  r(GIVING_BUDGET_CELL).setNumberFormat(AMOUNT_FORMAT).setBackground(THEME.input).setFontWeight('bold')
+    .setBorder(true, true, true, true, null, null, THEME.brand, SpreadsheetApp.BorderStyle.SOLID);
+  r('C2:H2').merge().setFontSize(9).setFontStyle('italic').setFontColor(THEME.muted);
+  tab.setRowHeight(2, 30);
+  const body = tab.getRange(GIVING_FIRST_ROW, 1, n, GIVING_HEADERS.length);
+  LOOK.box(tab.getRange(GIVING_HEADER_ROW, 1, n + 1, GIVING_HEADERS.length));
+  LOOK.header(tab.getRange(GIVING_HEADER_ROW, 1, 1, GIVING_HEADERS.length));
+  tab.setRowHeight(GIVING_HEADER_ROW, 30);
+  body.setBackground('#FFFFFF');
+  tab.getRange(GIVING_FIRST_ROW, 1, n, 1).setHorizontalAlignment('center');
+  tab.getRange(GIVING_FIRST_ROW, 2, n, 1).setNumberFormat('M/d/yyyy').setHorizontalAlignment('center');
+  tab.getRange(GIVING_FIRST_ROW, 3, n, 5).setNumberFormat(AMOUNT_FORMAT);
+  tab.getRange(GIVING_FIRST_ROW, 4, n, 1).setBackground(THEME.soft);   // filled in by verifying
+  tab.getRange(GIVING_FIRST_ROW, 7, n, 1).setFontWeight('bold');
+  [60, 95, 120, 120, 120, 90, 120, 130].forEach(function (w, i) { tab.setColumnWidth(i + 1, w); });
+  const balance = tab.getRange(GIVING_FIRST_ROW, 7, n, 1);
+  tab.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setFontColor(THEME.diff).setBackground(THEME.diffBg)
+      .setRanges([balance]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setFontColor(THEME.match)
+      .setRanges([balance]).build(),
+  ]);
 }
 
 /**

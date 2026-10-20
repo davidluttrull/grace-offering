@@ -95,6 +95,7 @@ Send the business office <https://gracetoanderson.com/offeringverification> and 
 ## The Sheet
 
 - New report tabs appear on the left, newest first. **Template** stays on the far right.
+- The Sheet uses the web pages' look: the Poppins font, a dark green title bar, medium green headings with a green rule under them, and soft green borders. The light green cells are still the ones the counters fill in. Total Offering and Total Giving are dark green, like the bar at the bottom of the pages. Designation differences, and the giving tab's Balance, show green when they match or are over budget and amber when they're not. Setup applies the look to every tab. Report tabs made before it are restyled once, with their numbers left as they are.
 - If a tab for that date already exists, the new one is named with **(2)**, **(3)**, and so on. Nothing is ever overwritten.
 - The Business Office Only cells start blank. The office's page fills in the dollar amount for each coin and bill (column E) and the checks total (D33). The office's coin and bill totals (D31 and D32) and its Total Offering (D34) are formulas, so they sit right beside the counters' totals in column C. The verifier's name and the date go in the **Verified By** box under the counters' names.
 - Under the Totals box, **Online Giving** (D35) holds the office's online giving, with its note beside it in E35, and **Total Giving** (D36) adds it and any Cash Unaccounted to the office's Total Offering. Report tabs made before this was added get these two rows the first time they're verified.
