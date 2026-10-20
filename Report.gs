@@ -1,28 +1,17 @@
 /**
- * Grace Baptist Church - Offering Report: emailed PDF report
+ * Grace Baptist Church - Offering Report: emailed report
  *
  * When the business office saves its verification, verifyReport_ (Code.gs)
- * calls emailReport_, which builds a report of that tab, turns it into a PDF
- * by way of a temporary Google Doc, and emails it to the addresses on the
- * Report Emails tab. The Sheet's Offering menu can send it again.
- *
- * The report is HTML made of tables only: the Google Docs import that turns
- * it into a PDF ignores flexbox, grid, SVG and embedded images, and draws a
- * border on every table cell unless told not to.
+ * calls emailReport_, which builds a report of that tab and emails it to the
+ * addresses on the Report Emails tab. The report is the body of the email,
+ * as HTML styled like the web pages, with a plain-text version for email apps
+ * that don't show HTML. The Sheet's Offering menu can send it again.
  */
 
 const EMAILS_NAME = 'Report Emails';
-const REPORT_LOGO_URL = 'https://davidluttrull.github.io/grace-offering/report-logo.png';
+// The web pages' logo, made for their dark green header (600 x 210).
+const LOGO_URL = 'https://davidluttrull.github.io/grace-offering/logo.png';
 const DESIGNATION_TITLES = ['Sunday School Envelopes', 'Other Designations'];
-
-const C_DEEP = '#4E7A34';
-const C_BRAND = '#7BAE59';
-const C_TINT = '#E3EFD9';
-const C_MUTED = '#6B6B6B';
-const C_RULE = '#E6E6E6';
-const C_MATCH = '#3D7A28';
-const C_DIFF = '#8A5200';
-const C_DIFF_BG = '#FFF4E0';
 
 /** Adds an Offering menu to the Sheet. */
 function onOpen() {
@@ -76,10 +65,9 @@ function emailReport_(sh, recipients, updated) {
       to: recipients.join(','),
       subject: (updated ? 'Updated offering report for ' : 'Offering report for ') + d.forShort +
         ' (' + usd_(d.totalGiving) + ' total giving)',
-      htmlBody: emailHtml_(d, updated),
+      htmlBody: reportHtml_(d, updated),
       body: emailText_(d, updated),
       name: 'Grace Offering',
-      attachments: [reportPdf_(reportHtml_(d), 'Offering ' + d.fileDate + '.pdf')],
     });
     note('Report emailed ' + stamp + ' to ' + recipients.length + (recipients.length === 1 ? ' address.' : ' addresses.'));
     return { status: 'sent', count: recipients.length };
@@ -107,7 +95,7 @@ function ensureEmailsTab_() {
     tab.getRange(1, 1, 1, 2).setValues([['Email the report to', 'One address per row in column A. ' +
       'A Google Group or routing address works too. Leave the list empty to stop sending.']]);
     tab.getRange(1, 1).setFontWeight('bold').setFontColor('#ffffff').setBackground('#233617');
-    tab.getRange(1, 2).setFontColor(C_MUTED).setFontStyle('italic');
+    tab.getRange(1, 2).setFontColor(THEME.muted).setFontStyle('italic');
     tab.setColumnWidth(1, 280);
     tab.setFrozenRows(1);
   }
@@ -150,7 +138,6 @@ function reportData_(sh, tz) {
     forLabel: sunday ? (isSunday ? '' : 'Week of ') + fmt(sunday, 'EEEE, MMMM d, yyyy') : sh.getName(),
     forShort: sunday ? (isSunday ? '' : 'week of ') + fmt(sunday, 'EEEE, MMM d, yyyy') : sh.getName(),
     reportDate: isSunday || !sunday ? '' : fmt(date, 'EEEE, MMMM d, yyyy'),
-    fileDate: sunday ? fmt(sunday, 'yyyy-MM-dd') : sh.getName(),
     coins: items('A9:E14'),
     bills: items('A20:E26'),
     checks: { count: checkCount, counted: Number(sh.getRange('H27').getValue()) || 0, office: num(sh.getRange(OFFICE_CHECKS_CELL).getValue()) },
@@ -204,59 +191,14 @@ function readDesignations_(sh) {
   return groups;
 }
 
-// ---- PDF --------------------------------------------------------------------
+// ---- Email HTML -------------------------------------------------------------
+//
+// The report is the email itself, styled like the web pages (THEME in Code.gs).
+// Email apps ignore most CSS, so everything is tables, inline styles and
+// inline-block columns: side by side on a computer, stacked on a phone.
 
-/**
- * HTML -> temporary Google Doc (Drive converts it) -> PDF. The Doc is trashed afterwards.
- * The conversion needs the Drive API advanced service (Services + > Drive API in the editor).
- */
-function reportPdf_(html, fileName) {
-  if (typeof Drive === 'undefined') {
-    throw new Error('The Drive API service is off. In Apps Script, click + next to Services, ' +
-      'choose Drive API, click Add, then try again.');
-  }
-  const blob = Utilities.newBlob(html, 'text/html', 'report.html');
-  const title = 'Offering report (temporary)';
-  // Drive API v3 (the editor's default) has create; v2 has insert.
-  const created = Drive.Files.create
-    ? Drive.Files.create({ name: title, mimeType: MimeType.GOOGLE_DOCS }, blob)
-    : Drive.Files.insert({ title: title, mimeType: MimeType.GOOGLE_DOCS }, blob, { convert: true });
-  const file = DriveApp.getFileById(created.id);
-  try {
-    finishDoc_(DocumentApp.openById(created.id));
-    return file.getAs('application/pdf').setName(fileName);
-  } finally {
-    file.setTrashed(true);
-  }
-}
-
-/** Page margins and the logo, which the HTML import can't carry. */
-function finishDoc_(doc) {
-  const body = doc.getBody();
-  body.setMarginTop(36).setMarginBottom(36).setMarginLeft(43).setMarginRight(43);
-  const logo = takePlaceholder_(body, 'LOGO');
-  if (logo) {
-    try {
-      const img = logo.insertInlineImage(0, UrlFetchApp.fetch(REPORT_LOGO_URL).getBlob());
-      const h = 52;
-      img.setWidth(Math.round(img.getWidth() * h / img.getHeight())).setHeight(h);
-    } catch (e) {
-      logo.appendText('GRACE BAPTIST CHURCH').setBold(true).setFontSize(16);
-    }
-  }
-  doc.saveAndClose();
-}
-
-/** Removes a [[NAME]] marker and returns the paragraph it was in. */
-function takePlaceholder_(body, name) {
-  const found = body.findText('\\[\\[' + name + '\\]\\]');
-  if (!found) return null;
-  const text = found.getElement().asText();
-  text.deleteText(found.getStartOffset(), found.getEndOffsetInclusive());
-  return text.getParent().asParagraph();
-}
-
-// ---- Report HTML ------------------------------------------------------------
+const FONT = "font-family:Poppins,'Helvetica Neue',Helvetica,Arial,sans-serif;";
+const DASH = '<span style="color:#AAAAAA">—</span>';
 
 /** 1234.5 -> "$1,234.50"; null -> "—". */
 function usd_(n) {
@@ -277,177 +219,71 @@ function esc_(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** A table cell. Docs draws a border on every cell unless told not to. */
-function td_(content, style) {
-  return '<td style="border:none;padding:0;vertical-align:top;' + (style || '') + '">' + content + '</td>';
+/** A full-width layout table. */
+function eTable_(rows, style) {
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;' + (style || '') + '">' + rows + '</table>';
 }
 
-function table_(rows, width) {
-  return '<table style="border-collapse:collapse;width:' + width + 'pt">' + rows + '</table>';
+/** One white card on the page, like the web pages' cards. */
+function eCard_(inner) {
+  return '<tr><td style="padding-top:12px">' +
+    eTable_('<tr><td style="padding:16px 14px">' + inner + '</td></tr>',
+      'background:#FFFFFF;border:1px solid ' + THEME.line + ';border-radius:16px;border-collapse:separate') + '</td></tr>';
 }
 
-function heading_(text, top) {
-  return '<p style="margin:' + (top === undefined ? 12 : top) + 'pt 0 2pt;font-size:11pt;font-weight:bold;' +
-    'color:' + C_DEEP + ';letter-spacing:1px">' + esc_(text.toUpperCase()) + '</p>';
+function eHeading_(text, top) {
+  return '<p style="' + FONT + 'margin:' + (top === undefined ? 0 : top) + 'px 0 4px;font-size:13px;font-weight:600;letter-spacing:1px;' +
+    'text-transform:uppercase;color:' + THEME.mid + '">' + esc_(text) + '</p>';
 }
 
-function caption_(text) {
-  return '<p style="margin:0 0 6pt;font-size:8.5pt;color:' + C_MUTED + '">' + esc_(text) + '</p>';
+function eCaption_(text) {
+  return '<p style="' + FONT + 'margin:0 0 10px;font-size:12px;line-height:1.4;color:' + THEME.muted + '">' + esc_(text) + '</p>';
+}
+
+function eSubhead_(text) {
+  return '<p style="' + FONT + 'margin:10px 0 4px;font-size:14px;font-weight:600;color:' + THEME.ink + '">' + esc_(text) + '</p>';
 }
 
 /**
- * A small table with a header row. cols: [{label, width, right}]; rows: arrays
- * of cell HTML; opts.styles: an extra style per row (for subtotal rows).
- * Docs sizes columns from the first row, so the header carries the widths.
+ * A table with a heading row. cols: [{label, right}]; rows: arrays of cell
+ * HTML; styles: an optional extra style per row ('sub' or 'grand' or CSS).
  */
-function grid_(cols, rows, opts) {
-  opts = opts || {};
-  const width = cols.reduce(function (t, c) { return t + c.width; }, 0);
-  const head = '<tr>' + cols.map(function (c) {
-    return td_(esc_(c.label), 'width:' + c.width + 'pt;font-size:7.5pt;color:' + C_MUTED + ';padding:2pt 4pt;' +
-      'border-bottom:1.5pt solid ' + C_BRAND + (c.right ? ';text-align:right' : ''));
-  }).join('') + '</tr>';
+function eGrid_(cols, rows, styles, size) {
+  const look = function (st) {
+    return st === 'sub' ? 'background:' + THEME.soft + ';font-weight:600;'
+      : st === 'grand' ? 'background:' + THEME.deep + ';color:#FFFFFF;font-weight:600;'
+      : st || '';
+  };
+  const head = cols.some(function (c) { return c.label; })
+    ? '<tr>' + cols.map(function (c) {
+      return '<td style="' + FONT + 'padding:4px 5px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:' + THEME.muted +
+        ';border-bottom:2px solid ' + THEME.brand + (c.right ? ';text-align:right' : '') + '">' + esc_(c.label) + '</td>';
+    }).join('') + '</tr>'
+    : '';
   const body = rows.map(function (cells, i) {
-    const extra = (opts.styles && opts.styles[i]) || 'border-bottom:0.5pt solid ' + C_RULE;
+    const st = look(styles && styles[i]);
     return '<tr>' + cells.map(function (html, j) {
-      return td_(html, 'padding:2pt 4pt;font-size:9pt;' + extra + (cols[j].right ? ';text-align:right' : ''));
+      return '<td style="' + FONT + 'padding:7px 5px;font-size:' + (size || 14) + 'px;color:' + THEME.ink + ';border-bottom:1px solid ' + THEME.line + ';' +
+        'font-variant-numeric:tabular-nums;' + st + (cols[j].right ? 'text-align:right;white-space:nowrap;' : '') + '">' + html + '</td>';
     }).join('') + '</tr>';
   }).join('');
-  return table_(head + body, width);
+  return eTable_(head + body);
+}
+
+/** Two columns side by side, stacking on narrow screens. */
+function eColumns_(left, right) {
+  const col = function (html) {
+    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:290px;font-size:14px;line-height:1.4">' + html + '</div>';
+  };
+  return '<div style="font-size:0;line-height:0">' + col(left) + '<div style="display:inline-block;width:20px;height:8px"></div>' + col(right) + '</div>';
 }
 
 /** A difference cell: green "Matches", amber amount, or a dash when the office left it blank. */
 function diffCell_(office, counted) {
-  if (office === null) return '<span style="color:#AAAAAA">—</span>';
+  if (office === null) return DASH;
   const t = diff_(office, counted);
-  return t === 'Matches' ? '<span style="color:' + C_MATCH + '">Matches</span>'
-    : '<span style="color:' + C_DIFF + ';font-weight:bold">' + t + '</span>';
-}
-
-/** The report. Letter page, 526pt between the margins set in finishDoc_. */
-function reportHtml_(d) {
-  const W = 526;
-  const h = [];
-  const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
-
-  h.push('<html><head><meta charset="utf-8"></head>' +
-    '<body style="max-width:526pt;padding:36pt 43pt;font-family:Arial;font-size:10pt;color:#1A1A1A">');
-
-  // Header: logo | title
-  h.push(table_('<tr>' + td_('<p style="margin:0">[[LOGO]]</p>', 'width:200pt;vertical-align:middle;padding-bottom:8pt;border-bottom:3pt solid ' + C_BRAND) +
-    td_('<p style="margin:0;text-align:right;font-size:11pt;font-weight:bold;color:' + C_DEEP + ';letter-spacing:1px">OFFERING REPORT</p>' +
-      '<p style="margin:0;text-align:right;font-size:' + (d.reportDate ? 15 : 18) + 'pt;font-weight:bold">' + esc_(d.forLabel) + '</p>' +
-      (d.reportDate ? '<p style="margin:0;text-align:right;font-size:8.5pt;color:' + C_MUTED + '">Report dated ' + esc_(d.reportDate) + '</p>' : ''),
-      'width:326pt;vertical-align:middle;padding-bottom:8pt;border-bottom:3pt solid ' + C_BRAND) + '</tr>', W));
-  h.push('<p style="margin:0;font-size:6pt">&nbsp;</p>');
-
-  // Tiles: total giving, offering, online giving, count check
-  const tile = function (label, value, sub, opts) {
-    opts = opts || {};
-    return td_('<p style="margin:0;font-size:7.5pt;color:' + (opts.dark ? C_TINT : C_MUTED) + '">' + esc_(label) + '</p>' +
-      '<p style="margin:0;font-size:' + (opts.size || 15) + 'pt;font-weight:bold;color:' + (opts.color || (opts.dark ? '#ffffff' : '#1A1A1A')) + '">' + value + '</p>' +
-      '<p style="margin:0;font-size:8pt;color:' + (opts.dark ? C_TINT : C_MUTED) + '">' + (sub || '&nbsp;') + '</p>',
-      'width:' + opts.width + 'pt;padding:8pt 10pt;' + (opts.dark ? 'background:' + C_DEEP : 'border:1pt solid #D9D9D9') +
-      (opts.bg ? ';background:' + opts.bg : ''));
-  };
-  const gap = td_('', 'width:8pt');
-  const check = !d.verified
-    ? tile('COUNT CHECK', 'Not verified', 'The office hasn\'t verified this report yet.', { width: 112, size: 13 })
-    : totalDiff === 0
-      ? tile('COUNT CHECK', 'Matches', 'Office and counters agree', { width: 112, color: C_MATCH })
-      : tile('COUNT CHECK', diff_(d.office[3], d.counted[3]), 'Office vs. counters', { width: 112, color: C_DIFF, bg: C_DIFF_BG });
-  h.push(table_('<tr>' +
-    tile('TOTAL GIVING', usd_(d.totalGiving), d.addDesignated || d.addMission ? 'Offering, online and other gifts' : 'Offering plus online giving', { width: 154, dark: true, size: 20 }) + gap +
-    tile('OFFERING', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted', { width: 118 }) + gap +
-    tile('ONLINE GIVING', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office', { width: 118 }) + gap +
-    check + '</tr>', W));
-
-  h.push(budgetHtml_(d, W));
-
-  // Verification summary
-  h.push(heading_('Verification'));
-  h.push(caption_('What the counters counted beside what the business office counted.'));
-  const vRows = [], vStyles = [];
-  ['Coins', 'Bills', 'Checks', 'Total Offering'].forEach(function (name, i) {
-    const grand = i === 3;
-    vRows.push([grand ? '<b>' + name + '</b>' : name, usd_(d.counted[i]), d.verified ? usd_(d.office[i]) : '—',
-      d.verified ? diffCell_(d.office[i], d.counted[i]) : '—']);
-    vStyles.push(grand ? 'background:' + C_TINT + ';font-weight:bold' : null);
-  });
-  vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
-  vStyles.push(null);
-  [['Additional designated (online)', d.addDesignated], ['Additional mission fund (online)', d.addMission]].forEach(function (x) {
-    if (!x[1]) return;
-    vRows.push([x[0], '', usd_(x[1]), '']);
-    vStyles.push(null);
-  });
-  vRows.push(['<b>Total giving</b>', '', '<b>' + usd_(d.totalGiving) + '</b>', '']);
-  vStyles.push('background:' + C_DEEP + ';color:#ffffff;font-weight:bold');
-  if (d.cash) {
-    vRows.push(['Cash unaccounted (record only)', '', usd_(d.cash), '']);
-    vStyles.push('color:' + C_MUTED);
-  }
-  h.push(grid_([{ label: '', width: 190 }, { label: 'COUNTED', width: 112, right: true },
-    { label: 'OFFICE', width: 112, right: true }, { label: 'DIFFERENCE', width: 112, right: true }], vRows, { styles: vStyles }));
-
-  // Coins and bills side by side
-  const money = function (title, list) {
-    const rows = list.map(function (x) {
-      return [esc_(x.name), x.quantity === null ? '<span style="color:#AAAAAA">—</span>' : String(x.quantity),
-        usd_(x.counted), x.office === null ? '<span style="color:#AAAAAA">—</span>' : usd_(x.office)];
-    });
-    return heading_(title, 10) + grid_([{ label: 'ITEM', width: 86 }, { label: 'QTY', width: 38, right: true },
-      { label: 'COUNTED', width: 64, right: true }, { label: 'OFFICE', width: 64, right: true }], rows);
-  };
-  h.push(table_('<tr>' + td_(money('Coins', d.coins), 'width:255pt') + td_('', 'width:16pt') +
-    td_(money('Bills', d.bills), 'width:255pt') + '</tr>', W));
-  h.push('<p style="margin:8pt 0 0;font-size:9pt"><b>Checks:</b> ' + d.checks.count + (d.checks.count === 1 ? ' check' : ' checks') +
-    ' counted, totaling ' + usd_(d.checks.counted) + '. Office checks total: ' + usd_(d.checks.office) + '.</p>');
-
-  // Designations side by side, listing only the ones that have an amount.
-  // Once verified, each shows the office's amount beside the count.
-  if (d.designations.length) {
-    h.push(heading_('Designations'));
-    h.push(caption_('Amounts in this section are not added to the Total Offering. Only designations with an amount are listed.' +
-      (d.verified ? ' Amber office amounts differ from the count.' : '')));
-    const amount = function (v) { return v === null ? '<span style="color:#AAAAAA">—</span>' : usd_(v); };
-    const officeCell = function (x) {
-      if (x.office === null) return amount(null);
-      return Math.round(x.office * 100) === Math.round((x.amount || 0) * 100) ? usd_(x.office)
-        : '<span style="color:' + C_DIFF + ';font-weight:bold">' + usd_(x.office) + '</span>';
-    };
-    const col = function (g) {
-      if (!g) return td_('', 'width:255pt');
-      const given = g.items.filter(function (x) { return x.amount !== null || (d.verified && x.office !== null); });
-      const title = '<p style="margin:4pt 0 2pt;font-size:9.5pt;font-weight:bold">' + esc_(g.title) + '</p>';
-      if (!given.length) {
-        return td_(title + '<p style="margin:0;font-size:9pt;color:' + C_MUTED + '">None this week.</p>', 'width:255pt');
-      }
-      const sum = function (key) { return given.reduce(function (t, x) { return t + Math.round((x[key] || 0) * 100); }, 0) / 100; };
-      const styles = given.map(function () { return null; }).concat(['background:' + C_TINT]);
-      if (!d.verified) {
-        const rows = given.map(function (x) { return [esc_(x.label), usd_(x.amount)]; });
-        rows.push(['<b>Total</b>', '<b>' + usd_(sum('amount')) + '</b>']);
-        return td_(title + grid_([{ label: 'NAME', width: 175 }, { label: 'AMOUNT', width: 80, right: true }], rows, { styles: styles }), 'width:255pt');
-      }
-      const rows = given.map(function (x) { return [esc_(x.label), amount(x.amount), officeCell(x)]; });
-      rows.push(['<b>Total</b>', '<b>' + usd_(sum('amount')) + '</b>', '<b>' + officeCell({ amount: sum('amount'), office: sum('office') }) + '</b>']);
-      return td_(title + grid_([{ label: 'NAME', width: 125 }, { label: 'COUNTED', width: 65, right: true },
-        { label: 'OFFICE', width: 65, right: true }], rows, { styles: styles }), 'width:255pt');
-    };
-    for (let i = 0; i < d.designations.length; i += 2) {
-      h.push(table_('<tr>' + col(d.designations[i]) + td_('', 'width:16pt') + col(d.designations[i + 1]) + '</tr>', W));
-    }
-  }
-
-  // Who counted and who verified
-  const people = 'Counted by ' + (d.counters.join(', ') || 'no names given') + '. ' +
-    (d.verified ? 'Verified by ' + d.verifiedBy + (d.verifiedOn ? ' on ' + d.verifiedOn : '') + '.' : 'Not verified yet.');
-  h.push('<p style="margin:14pt 0 0;font-size:9pt;color:' + C_MUTED + '">' + esc_(people) + '</p>');
-  h.push('<p style="margin:12pt 0 0;font-size:7.5pt;color:#999999;text-align:center">Sent automatically when the business office saved its verification. ' +
-    'Sheet tab: ' + esc_(d.tab) + '.</p>');
-  h.push('</body></html>');
-  return h.join('\n');
+  return t === 'Matches' ? '<span style="color:' + THEME.match + '">Matches</span>'
+    : '<span style="color:' + THEME.diff + ';font-weight:600">' + t + '</span>';
 }
 
 /** "+$29,600.16 over" / "−$4,296.52 under" against the budget, or a dash. */
@@ -457,45 +293,159 @@ function overUnder_(n) {
 }
 
 function overUnderCell_(n) {
-  if (n === null || n === undefined) return '<span style="color:#AAAAAA">—</span>';
-  return '<span style="color:' + (n < 0 ? C_DIFF : C_MATCH) + ';font-weight:bold">' + overUnder_(n) + '</span>';
+  if (n === null || n === undefined) return DASH;
+  return '<span style="color:' + (n < 0 ? THEME.diff : THEME.match) + ';font-weight:600">' + overUnder_(n) + '</span>';
 }
 
-/** The week against the budget and the fiscal year to date, laid out like the bulletin figures. */
-function budgetHtml_(d, W) {
+/** The report, as the email's HTML body. */
+function reportHtml_(d, updated) {
+  const T = THEME;
+  const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
+  const out = [];
+  const preview = usd_(d.totalGiving) + ' total giving · general fund ' + usd_(d.week.subtotal) +
+    (d.verified ? (totalDiff === 0 ? ' · count matches' : ' · count differs by ' + diff_(d.office[3], d.counted[3])) : ' · not verified');
+
+  out.push('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">' +
+    '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet"></head>' +
+    '<body style="margin:0;padding:0;background:' + T.soft + '">' +
+    '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">' + esc_(preview) + '</div>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="' + T.soft + '" style="background:' + T.soft + '">' +
+    '<tr><td align="center" style="padding:16px 6px 24px">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;border-collapse:collapse">');
+
+  // Header bar, like the top of the web pages
+  out.push('<tr><td bgcolor="' + T.deep + '" align="center" style="background:' + T.deep + ';border-radius:16px;padding:20px 18px 18px">' +
+    '<img src="' + LOGO_URL + '" width="149" height="52" alt="Grace Baptist Church" style="display:block;margin:0 auto 10px;border:0;height:52px;width:149px">' +
+    '<p style="' + FONT + 'margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#CFE3C0">' +
+    (updated ? 'Updated offering report' : 'Offering report') + '</p>' +
+    '<p style="' + FONT + 'margin:2px 0 0;font-size:22px;font-weight:700;color:#FFFFFF">' + esc_(d.forLabel) + '</p>' +
+    (d.reportDate ? '<p style="' + FONT + 'margin:2px 0 0;font-size:12px;color:#CFE3C0">Report dated ' + esc_(d.reportDate) + '</p>' : '') +
+    '</td></tr>');
+
+  // Total giving and the three tiles
+  const tile = function (label, value, sub, color, bg) {
+    return '<div style="display:inline-block;vertical-align:top;width:100%;max-width:186px;margin:10px 9px 0 0">' +
+      eTable_('<tr><td style="' + FONT + 'padding:10px 12px;line-height:1.3;background:' + (bg || '#FFFFFF') + ';border:1px solid ' + T.line + ';border-radius:12px">' +
+        '<p style="margin:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:' + T.muted + '">' + esc_(label) + '</p>' +
+        '<p style="margin:2px 0 0;font-size:19px;font-weight:700;color:' + (color || T.ink) + '">' + value + '</p>' +
+        '<p style="margin:2px 0 0;font-size:12px;line-height:1.35;color:' + T.muted + '">' + sub + '</p></td></tr>', 'border-collapse:separate') +
+      '</div>';
+  };
+  const check = !d.verified ? tile('Count check', 'Not verified', 'The office hasn’t verified this report yet.')
+    : totalDiff === 0 ? tile('Count check', 'Matches', 'Office and counters agree', T.match)
+    : tile('Count check', diff_(d.office[3], d.counted[3]), 'Office vs. counters', T.diff, T.diffBg);
+  out.push(eCard_(
+    '<p style="' + FONT + 'margin:0;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:' + T.muted + '">Total giving</p>' +
+    '<p style="' + FONT + 'margin:0;font-size:34px;line-height:1.15;font-weight:700;color:' + T.deep + '">' + usd_(d.totalGiving) + '</p>' +
+    '<p style="' + FONT + 'margin:2px 0 0;font-size:13px;color:' + T.muted + '">' +
+      (d.addDesignated || d.addMission ? 'Offering, online giving and additional online gifts' : 'Offering plus online giving') + '</p>' +
+    '<div style="font-size:0;line-height:0">' +
+      tile('Offering', usd_(d.offering), d.verified ? 'Cash and checks, verified' : 'Cash and checks, as counted') +
+      tile('Online giving', usd_(d.online === null ? 0 : d.online), d.onlineNote ? esc_(d.onlineNote) : 'Entered by the office') +
+      check + '</div>'));
+
+  // Budget, laid out like the bulletin figures
   const w = d.week, g = d.giving;
   const forWeek = g ? Math.round((w.subtotal - g.budget) * 100) / 100 : null;
-  const col = function (title, rows, styles) {
-    return td_('<p style="margin:4pt 0 2pt;font-size:9.5pt;font-weight:bold">' + esc_(title) + '</p>' +
-      grid_([{ label: '', width: 175 }, { label: '', width: 80, right: true }], rows, { styles: styles }), 'width:255pt');
+  const pairs = function (rows, styles) { return eGrid_([{ label: '' }, { label: '', right: true }], rows, styles); };
+  out.push(eCard_(eHeading_('Budget') +
+    eCaption_('General fund is the offering, less designated and mission fund gifts, plus online giving. Year to date is the fiscal year' +
+      (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
+    eColumns_(
+      eSubhead_('General Fund') + pairs([['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
+        ['Online giving', usd_(w.online)], ['Subtotal general fund', usd_(w.subtotal)], ['For week', overUnderCell_(forWeek)]],
+        [null, null, null, 'sub', null]),
+      eSubhead_('Funds and Year to Date') + pairs([['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
+        ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)], ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']],
+        [null, null, null, 'sub']))));
+
+  // Verification: counted beside office
+  const vRows = [], vStyles = [];
+  ['Coins', 'Bills', 'Checks', 'Total Offering'].forEach(function (name, i) {
+    vRows.push([name, usd_(d.counted[i]), d.verified ? usd_(d.office[i]) : '—', d.verified ? diffCell_(d.office[i], d.counted[i]) : '—']);
+    vStyles.push(i === 3 ? 'sub' : null);
+  });
+  vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
+  vStyles.push(null);
+  [['Additional designated (online)', d.addDesignated], ['Additional mission fund (online)', d.addMission]].forEach(function (x) {
+    if (!x[1]) return;
+    vRows.push([x[0], '', usd_(x[1]), '']);
+    vStyles.push(null);
+  });
+  vRows.push(['Total giving', '', usd_(d.totalGiving), '']);
+  vStyles.push('grand');
+  if (d.cash) {
+    vRows.push(['Cash unaccounted (record only)', '', usd_(d.cash), '']);
+    vStyles.push('color:' + T.muted + ';font-size:13px;');
+  }
+  out.push(eCard_(eHeading_('Verification') + eCaption_('What the counters counted beside what the business office counted.') +
+    eGrid_([{ label: '' }, { label: 'Counted', right: true }, { label: 'Office', right: true }, { label: 'Difference', right: true }], vRows, vStyles, 13)));
+
+  // Coins and bills, then checks
+  const money = function (title, list) {
+    return eSubhead_(title) + eGrid_([{ label: 'Item' }, { label: 'Qty', right: true }, { label: 'Counted', right: true }, { label: 'Office', right: true }],
+      list.map(function (x) {
+        return [esc_(x.name), x.quantity === null ? DASH : String(x.quantity), usd_(x.counted), x.office === null ? DASH : usd_(x.office)];
+      }));
   };
-  const left = [['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
-    ['Online giving', usd_(w.online)]];
-  left.push(['<b>Subtotal general fund</b>', '<b>' + usd_(w.subtotal) + '</b>'], ['For week', overUnderCell_(forWeek)]);
-  const leftStyles = left.map(function () { return null; });
-  leftStyles[left.length - 2] = 'background:' + C_TINT;
-  const right = [['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
-    ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)],
-    ['<b>Year to date</b>', '<b>' + (g && g.ytd !== null ? usd_(g.ytd) : '—') + '</b>']];
-  const rightStyles = [null, null, null, 'background:' + C_TINT];
-  return heading_('Budget') +
-    caption_('General fund is the offering, less designated and mission fund gifts, plus online giving' +
-      '. Year to date is the fiscal year' + (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
-    table_('<tr>' + col('General Fund', left, leftStyles) + td_('', 'width:16pt') + col('Funds and Year to Date', right, rightStyles) + '</tr>', W);
+  out.push(eCard_(eHeading_('Cash and checks') + eColumns_(money('Coins', d.coins), money('Bills', d.bills)) +
+    '<p style="' + FONT + 'margin:12px 0 0;font-size:14px;color:' + T.ink + '"><b>Checks:</b> ' + d.checks.count + (d.checks.count === 1 ? ' check' : ' checks') +
+    ' counted, totaling ' + usd_(d.checks.counted) + '. Office checks total: ' + usd_(d.checks.office) + '.</p>'));
+
+  // Designations, listing only the ones that have an amount
+  if (d.designations.length) {
+    const officeCell = function (x) {
+      if (x.office === null) return DASH;
+      return Math.round(x.office * 100) === Math.round((x.amount || 0) * 100) ? usd_(x.office)
+        : '<span style="color:' + T.diff + ';font-weight:600">' + usd_(x.office) + '</span>';
+    };
+    const group = function (gr) {
+      if (!gr) return '';
+      const given = gr.items.filter(function (x) { return x.amount !== null || (d.verified && x.office !== null); });
+      if (!given.length) return eSubhead_(gr.title) + '<p style="' + FONT + 'margin:0;font-size:13px;color:' + T.muted + '">None this week.</p>';
+      const sum = function (key) { return given.reduce(function (t, x) { return t + Math.round((x[key] || 0) * 100); }, 0) / 100; };
+      const styles = given.map(function () { return null; }).concat(['sub']);
+      if (!d.verified) {
+        return eSubhead_(gr.title) + eGrid_([{ label: 'Name' }, { label: 'Amount', right: true }],
+          given.map(function (x) { return [esc_(x.label), usd_(x.amount)]; }).concat([['Total', usd_(sum('amount'))]]), styles);
+      }
+      return eSubhead_(gr.title) + eGrid_([{ label: 'Name' }, { label: 'Counted', right: true }, { label: 'Office', right: true }],
+        given.map(function (x) { return [esc_(x.label), x.amount === null ? DASH : usd_(x.amount), officeCell(x)]; })
+          .concat([['Total', usd_(sum('amount')), officeCell({ amount: sum('amount'), office: sum('office') })]]), styles);
+    };
+    let html = '';
+    for (let i = 0; i < d.designations.length; i += 2) html += eColumns_(group(d.designations[i]), group(d.designations[i + 1]));
+    out.push(eCard_(eHeading_('Designations') +
+      eCaption_('Not added to the Total Offering. Only designations with an amount are listed.' + (d.verified ? ' Amber office amounts differ from the count.' : '')) +
+      html));
+  }
+
+  // Who counted and verified
+  const people = 'Counted by ' + (d.counters.join(', ') || 'no names given') + '. ' +
+    (d.verified ? 'Verified by ' + d.verifiedBy + (d.verifiedOn ? ' on ' + d.verifiedOn : '') + '.' : 'Not verified yet.');
+  out.push('<tr><td style="' + FONT + 'padding:16px 8px 0;text-align:center;font-size:13px;color:' + T.muted + '">' + esc_(people) +
+    (d.desDiffs ? '<br><span style="color:' + T.diff + ';font-weight:600">' + esc_(desDiffText_(d.desDiffs)) + '</span>' : '') +
+    '<br><span style="font-size:11px;color:#999999">Sent automatically when the business office saved its verification. Sheet tab: ' + esc_(d.tab) + '.</span>' +
+    '</td></tr>');
+
+  out.push('</table></td></tr></table></body></html>');
+  return out.join('\n');
 }
 
-/** The bulletin figures as [label, value] pairs, for the email. */
+/** The bulletin figures as [label, value] pairs, for the plain-text email. */
 function budgetLines_(d) {
   const w = d.week, g = d.giving;
-  const lines = [['Weekly budget', g ? usd_(g.budget) : '—'],
+  return [['Weekly budget', g ? usd_(g.budget) : '—'],
     ['General fund this week', usd_(w.subtotal) + (g ? ' (' + overUnder_(Math.round((w.subtotal - g.budget) * 100) / 100) + ' budget)' : '')],
     ['Weekly fiscal YTD', g && g.balance !== null ? overUnder_(g.balance) + ' budget' : '—'],
     ['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
     ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']];
-  return lines;
 }
 
-// ---- Email body ---------------------------------------------------------------
+// ---- Plain-text email -----------------------------------------------------------
+//
+// For the few email apps that don't show HTML.
 
 function emailText_(d, updated) {
   const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
@@ -517,45 +467,10 @@ function emailText_(d, updated) {
       : 'The business office count differs from the counters by ' + diff_(d.office[3], d.counted[3]) + '.',
   ], d.desDiffs ? [desDiffText_(d.desDiffs)] : [], [
     'Counted by ' + (d.counters.join(', ') || 'no names given') + (d.verified ? '. Verified by ' + d.verifiedBy + '.' : '.'),
-    '',
-    'The full report is attached as a PDF.',
+    'Sheet tab: ' + d.tab,
   ]).join('\n');
 }
 
 function desDiffText_(n) {
-  return n + (n === 1 ? ' designation differs' : ' designations differ') + ' from the counters. See the attached report.';
-}
-
-function emailHtml_(d, updated) {
-  const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
-  const row = function (label, value, bold) {
-    return '<tr><td style="padding:2px 24px 2px 0">' + (bold ? '<b>' + label + '</b>' : label) + '</td>' +
-      '<td style="text-align:right">' + (bold ? '<b>' + value + '</b>' : value) + '</td></tr>';
-  };
-  const status = !d.verified ? 'Not verified yet.'
-    : totalDiff === 0 ? '<span style="color:' + C_MATCH + '">The business office count matches the counters.</span>'
-    : '<span style="color:' + C_DIFF + ';font-weight:bold">The business office count differs from the counters by ' +
-      diff_(d.office[3], d.counted[3]) + '.</span>';
-  return '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1A1A1A">' +
-    '<p style="margin:0 0 4px;color:' + C_MUTED + '">' + (updated ? 'Updated offering report for ' : 'Offering report for ') +
-    '<b style="color:#1A1A1A">' + esc_(d.forLabel) + '</b>' + (d.reportDate ? ' (report dated ' + esc_(d.reportDate) + ')' : '') + '</p>' +
-    '<p style="margin:0 0 12px;font-size:32px;font-weight:bold;color:' + C_DEEP + '">' + usd_(d.totalGiving) +
-    ' <span style="font-size:14px;font-weight:normal;color:' + C_MUTED + '">total giving</span></p>' +
-    '<table style="border-collapse:collapse;margin-bottom:12px">' +
-    row('Offering', usd_(d.offering)) +
-    row('Online giving' + (d.onlineNote ? ' <span style="color:' + C_MUTED + '">(' + esc_(d.onlineNote) + ')</span>' : ''),
-      usd_(d.online === null ? 0 : d.online)) +
-    (d.addDesignated ? row('Additional designated (online)', usd_(d.addDesignated)) : '') +
-    (d.addMission ? row('Additional mission fund (online)', usd_(d.addMission)) : '') +
-    row('Total giving', usd_(d.totalGiving), true) +
-    (d.cash ? row('<span style="color:' + C_MUTED + '">Cash unaccounted (record only)</span>', '<span style="color:' + C_MUTED + '">' + usd_(d.cash) + '</span>') : '') +
-    '</table>' +
-    '<p style="margin:0 0 4px;font-weight:bold;color:' + C_DEEP + '">Budget</p>' +
-    '<table style="border-collapse:collapse;margin-bottom:12px">' +
-    budgetLines_(d).map(function (l) { return row(l[0], l[1], l[0] === 'Year to date'); }).join('') + '</table>' +
-    '<p style="margin:0 0 8px">' + status + '</p>' +
-    (d.desDiffs ? '<p style="margin:0 0 8px;color:' + C_DIFF + ';font-weight:bold">' + desDiffText_(d.desDiffs) + '</p>' : '') +
-    '<p style="margin:0 0 12px;color:' + C_MUTED + '">Counted by ' + esc_(d.counters.join(', ') || 'no names given') +
-    (d.verified ? '. Verified by ' + esc_(d.verifiedBy) + '.' : '.') + '</p>' +
-    '<p style="margin:0">The full report is attached as a PDF.</p></div>';
+  return n + (n === 1 ? ' designation differs' : ' designations differ') + ' from the counters. See Designations.';
 }

@@ -2,11 +2,11 @@
 
 Counters fill in the offering report on a phone instead of in the spreadsheet. Each time they submit, the Google Sheet gets a new tab named for the report date (for example **Oct 12, 2026**). The tab is laid out like the church's offering report, with the same formatting and formulas, and the green cells are filled in.
 
-The next day, the business office opens a second page, picks the report, and enters its own figures beside the counters' figures, plus the week's online giving. They're saved into that tab's "Business Office Only" cells, and a one-page PDF report is emailed to the staff.
+The next day, the business office opens a second page, picks the report, and enters its own figures beside the counters' figures, plus the week's online giving. They're saved into that tab's "Business Office Only" cells, and the report is emailed to the staff.
 
 It has three parts:
 
-- **The Sheet and its script** (`Code.gs`, `Report.gs` and `Giving.gs`). The script lives inside the Google Sheet. It builds a **Template** tab that looks like the offering report, then copies it for each report and fills it in. `Report.gs` builds and emails the PDF report. `Giving.gs` keeps the fiscal year's giving tab, which tracks each week against the budget.
+- **The Sheet and its script** (`Code.gs`, `Report.gs` and `Giving.gs`). The script lives inside the Google Sheet. It builds a **Template** tab that looks like the offering report, then copies it for each report and fills it in. `Report.gs` builds the report and emails it. `Giving.gs` keeps the fiscal year's giving tab, which tracks each week against the budget.
 - **The counters' page** (`index.html`, plus the logo, icons, and `manifest.webmanifest`). It's hosted on GitHub Pages at <https://davidluttrull.github.io/grace-offering/>. The church site forwards <https://gracetoanderson.com/offeringcount> there, and that's the address counters use.
 - **The business office's page** (`office.html` and `office.webmanifest`), at <https://davidluttrull.github.io/grace-offering/office.html>. The church site forwards <https://gracetoanderson.com/offeringverification> there.
 
@@ -30,13 +30,12 @@ Leave it empty. Setup builds the report layout in step 3.
 2. Click "Untitled project" at the top and rename it **Offering Report**.
 3. Delete what's in `Code.gs`, then paste in the entire contents of this folder's `Code.gs`.
 4. Click the **+** next to "Files", choose **Script**, and name it `Report` (Apps Script adds the `.gs` itself). Delete what's inside and paste in the contents of `Report.gs`. Do the same for `Giving.gs`, naming it `Giving`.
-5. Click the **+** next to "Services", choose **Drive API**, and click **Add**. The report uses it to turn each report into a PDF.
-6. Click the save icon (💾).
+5. Click the save icon (💾).
 
 ## 3. Run setup once
 
 1. Make sure **Code.gs** is selected in the Files list. In the function dropdown next to **Debug**, pick **setup**, then click **Run**.
-2. Google will ask for permission. Click **Review permissions** and choose your account. When it warns "Google hasn't verified this app", click **Advanced → Go to Offering Report (unsafe) → Allow**. That warning is expected for a script you wrote yourself. The list includes Drive, Docs and sending email: the script needs them to build the PDF report and email it.
+2. Google will ask for permission. Click **Review permissions** and choose your account. When it warns "Google hasn't verified this app", click **Advanced → Go to Offering Report (unsafe) → Allow**. That warning is expected for a script you wrote yourself. The list includes sending email, which the script needs to send the report.
 3. When it finishes, the **Execution log** at the bottom shows two lines like `Counter code: 482915` and `Business office code: 730264`. Write both down. The counter code goes to the counters, and the business office code goes only to the business office.
 4. Switch back to the Sheet. **Sheet1** is now named **Template** and holds a blank offering report: the coins, bills, checks, totals, online giving, counters, and **Verified By** sections, with green cells for the counters' numbers and the report's formulas. It stops at the **Designations** title, because the script lays out the Designations section on each new report.
 5. There's also a **Report Emails** tab. Type the staff email addresses in column A, one per row, starting in A2. A Google Group or routing address works too.
@@ -120,7 +119,7 @@ Each fiscal year (July through June) has its own tab, named like **Yr. Giving 20
 
 ## Emailed reports
 
-When the business office saves a verification, the script emails a one-page PDF to everyone on the **Report Emails** tab. The report and the email subject lead with the Sunday the offering is for. If a report's date isn't a Sunday, they say "Week of Sunday …" and show the report's own date below it. The report shows Total Giving, the verified offering, online giving, and whether the office's count matches the counters'. It also has the counted and office figures side by side, the coins and bills, the checks total, the designations that have an amount (with the office's amount beside each once verified), and who counted and verified. Cash Unaccounted appears under Total Giving, marked "record only", when there is any. It isn't added in. A **Budget** section near the top shows the bulletin figures: the weekly budget, the general fund (offering), online giving, the subtotal general fund, **For week** (over or under the weekly budget), Designated, Mission Fund, **Weekly fiscal YTD** (over or under budget for the year so far) and **Year to date** (received so far this fiscal year). The email itself shows the offering, online giving, Total Giving and the same budget figures, so staff can see the numbers without opening the attachment. It also shows any Cash Unaccounted (record only) and says how many designations differ from the count.
+When the business office saves a verification, the script emails the report to everyone on the **Report Emails** tab. The report is the email itself, not an attachment, laid out like the web pages: the dark green header with the logo, then cards with the figures. On a computer some cards show two columns side by side; on a phone they stack. The report and the email subject lead with the Sunday the offering is for. If a report's date isn't a Sunday, they say "Week of Sunday …" and show the report's own date below it. The report shows Total Giving, the verified offering, online giving, and whether the office's count matches the counters'. It also has the counted and office figures side by side, the coins and bills, the checks total, the designations that have an amount (with the office's amount beside each once verified), and who counted and verified. Cash Unaccounted appears under Total Giving, marked "record only", when there is any. It isn't added in. A **Budget** section near the top shows the bulletin figures: the weekly budget, the general fund (offering), online giving, the subtotal general fund, **For week** (over or under the weekly budget), Designated, Mission Fund, **Weekly fiscal YTD** (over or under budget for the year so far) and **Year to date** (received so far this fiscal year). At the bottom it says who counted and verified, and how many designations differ from the count. Email apps that can't show the layout get a plain-text version with the same figures.
 
 To stop the emails, clear the addresses on the Report Emails tab.
 
@@ -129,7 +128,7 @@ The Sheet has an **Offering** menu (it appears a few seconds after the Sheet ope
 - **Email report for this tab** sends that tab's report to everyone on the list again. Use it if an email failed, or to resend an older report.
 - **Send me a test report for this tab** sends it only to you, so you can check how it looks without emailing the staff.
 
-Each report is built in a temporary Google Doc that's moved to the Drive trash right after the PDF is made, so you may see "Offering report (temporary)" files in the trash. Google empties the trash on its own after 30 days.
+Reports used to be sent as a PDF, made by way of a temporary Google Doc. They aren't anymore, so the script no longer needs the Drive API service. If it's listed under **Services** in Apps Script, you can leave it or remove it.
 
 ## Updating the script
 
