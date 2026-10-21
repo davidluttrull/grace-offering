@@ -220,11 +220,11 @@ function buildTemplate_(sheet) {
   styleReport_(sheet);
 }
 
-// The web pages' light theme, for the Sheet: Poppins, the dark green title
+// The web pages' light theme, for the Sheet: Arial, the dark green title
 // bar, medium green headings, soft green borders. Light green cells are still
 // the ones the counters fill in.
 const THEME = {
-  font: 'Poppins',
+  font: 'Arial',      // the emailed report keeps Poppins (FONT in Report.gs)
   deep: '#233617',    // title bar and grand totals
   brand: '#7BAE58',   // heading underlines and tab color
   mid: '#4E7A35',     // heading text
