@@ -64,7 +64,7 @@ function emailReport_(sh, recipients, updated) {
     MailApp.sendEmail({
       to: recipients.join(','),
       subject: (updated ? 'Updated offering report for ' : 'Offering report for ') + d.forShort +
-        ' (' + usd_(d.week.subtotal) + ' General Fund)',
+        ' (' + usd_(d.weekTotal) + ' General Fund)',
       htmlBody: reportHtml_(d, updated),
       body: emailText_(d, updated),
       name: 'Grace Offering',
@@ -165,6 +165,12 @@ function reportData_(sh, tz) {
       return x.office !== null && Math.round(x.office * 100) !== Math.round((x.amount || 0) * 100);
     }).length;
   }, 0);
+  // When more than one verified report belongs to this Sunday (a second count,
+  // a midweek offering), the week's figures are their total from the giving tab.
+  const g = out.giving;
+  out.otherReports = g && g.reports.indexOf(sh.getName()) !== -1
+    ? g.reports.filter(function (t) { return t !== sh.getName(); }) : [];
+  out.weekTotal = out.otherReports.length && g.weekTotal !== null ? g.weekTotal : out.week.subtotal;
   return out;
 }
 
@@ -317,7 +323,7 @@ function reportHtml_(d, updated) {
   const T = THEME;
   const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
   const out = [];
-  const preview = 'General fund ' + usd_(d.week.subtotal) + ' · ' + usd_(d.totalGiving) + ' total giving' +
+  const preview = 'General fund ' + usd_(d.weekTotal) + ' · ' + usd_(d.totalGiving) + ' total giving' +
     (d.verified ? (totalDiff === 0 ? ' · count matches' : ' · count differs by ' + diff_(d.office[3], d.counted[3])) : ' · not verified');
 
   out.push('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -341,7 +347,8 @@ function reportHtml_(d, updated) {
   // Quick boxes, two by two: general fund, the week against the budget, the
   // fiscal year to date, and in-person against online giving.
   const w = d.week, g = d.giving;
-  const forWeek = g ? Math.round((w.subtotal - g.budget) * 100) / 100 : null;
+  const combined = d.otherReports.length > 0;
+  const forWeek = g ? Math.round((d.weekTotal - g.budget) * 100) / 100 : null;
   const ytdBalance = g ? g.balance : null;
   const signed = function (n) { return n === null || n === undefined ? '—' : (n < 0 ? '−' : '+') + usd_(Math.abs(n)); };
   const box = function (inner, bg, border) {
@@ -368,8 +375,9 @@ function reportHtml_(d, updated) {
       !known ? '#FFFFFF' : under ? T.diffBg : '#EEF6E8', !known ? T.line : under ? '#F0D6A8' : T.line);
   };
 
-  const generalBox = box(label('General fund this week', '#CFE3C0') + big(usd_(w.subtotal), '#FFFFFF') +
-    small('Offering, less designated and mission gifts, plus online giving', '#CFE3C0'), T.deep, T.deep);
+  const generalBox = box(label('General fund this week', '#CFE3C0') + big(usd_(d.weekTotal), '#FFFFFF') +
+    small(combined ? 'This report ' + usd_(w.subtotal) + ', plus ' + esc_(d.otherReports.join(' and ')) + ' for the same Sunday'
+      : 'Offering, less designated and mission gifts, plus online giving', '#CFE3C0'), T.deep, T.deep);
   const weekBox = overUnderBox('For the week', forWeek, function (under) {
     return (under ? 'Under' : 'Over') + ' the ' + usd_(g.budget) + ' weekly budget';
   });
@@ -411,8 +419,10 @@ function reportHtml_(d, updated) {
       (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
     eColumns_(
       eSubhead_('General Fund') + pairs([['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
-        ['Online giving', usd_(w.online)], ['Subtotal general fund', usd_(w.subtotal)], ['For week', overUnderCell_(forWeek)]],
-        [null, null, null, 'sub', null]),
+        ['Online giving', usd_(w.online)], ['Subtotal general fund', usd_(w.subtotal)]]
+          .concat(combined ? [['Week total (' + (d.otherReports.length + 1) + ' reports)', usd_(d.weekTotal)]] : [])
+          .concat([['For week', overUnderCell_(forWeek)]]),
+        [null, null, null, 'sub'].concat(combined ? ['sub'] : []).concat([null])),
       eSubhead_('Funds and Year to Date') + pairs([['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
         ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)], ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']],
         [null, null, null, 'sub']))));
@@ -494,10 +504,12 @@ function reportHtml_(d, updated) {
 function budgetLines_(d) {
   const w = d.week, g = d.giving;
   return [['Weekly budget', g ? usd_(g.budget) : '—'],
-    ['General fund this week', usd_(w.subtotal) + (g ? ' (' + overUnder_(Math.round((w.subtotal - g.budget) * 100) / 100) + ' budget)' : '')],
+    ['General fund this week', usd_(d.weekTotal) + (g ? ' (' + overUnder_(Math.round((d.weekTotal - g.budget) * 100) / 100) + ' budget)' : '')]]
+    .concat(d.otherReports.length ? [['  This report', usd_(w.subtotal)], ['  Also for this Sunday', d.otherReports.join(' and ')]] : [])
+    .concat([
     ['Weekly fiscal YTD', g && g.balance !== null ? overUnder_(g.balance) + ' budget' : '—'],
     ['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
-    ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']];
+    ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']]);
 }
 
 // ---- Plain-text email -----------------------------------------------------------

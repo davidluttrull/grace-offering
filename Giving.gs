@@ -9,7 +9,9 @@
  * Balance columns follow.
  *
  * When the business office verifies a report, verifyReport_ (Code.gs) calls
- * recordWeek_, which writes the week's general fund into that Sunday's row.
+ * recordWeek_, which writes the week's general fund into that Sunday's row:
+ * the total of every verified report dated that week, so a second count or a
+ * midweek offering adds to the Sunday instead of replacing it.
  * The emailed report (Report.gs) reads the budget, the week and the year to
  * date back from the tab.
  *
@@ -170,7 +172,32 @@ function givingRow_(tab, sunday, tz) {
   return 0;
 }
 
-/** Writes a verified report's general fund into its Sunday's row of the giving tab. */
+// The REPORT column lists a week's report tabs with this between them (tab
+// names have commas in them, like "Oct 12, 2026").
+const REPORT_LIST_SEPARATOR = '; ';
+
+/**
+ * Every verified report tab dated in the week of this Sunday (Sunday through
+ * Saturday), oldest tab first. Tabs are named for their report's date, so only
+ * tabs whose name falls in that week are opened.
+ */
+function sundayReports_(sunday, tz) {
+  const want = Utilities.formatDate(sunday, tz, 'yyyy-MM-dd');
+  const from = sunday.getTime() - 86400000, to = sunday.getTime() + 7 * 86400000;
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets().filter(function (t) {
+    if (t.getName() === TEMPLATE_NAME) return false;
+    const named = new Date(t.getName().replace(/\s*\(\d+\)$/, ''));
+    if (isNaN(named.getTime()) || named.getTime() < from || named.getTime() > to) return false;
+    if (t.getRange('A1').getValue() !== TITLE || !t.getRange(VERIFIER_CELL).getValue()) return false;
+    const d = t.getRange(DATE_CELL).getValue();
+    return d instanceof Date && Utilities.formatDate(sundayOf_(d, tz), tz, 'yyyy-MM-dd') === want;
+  }).reverse();   // report tabs are kept newest first
+}
+
+/**
+ * Writes the week's general fund into its Sunday's row of the giving tab: the
+ * total of every verified report for that Sunday, with their tab names.
+ */
 function recordWeek_(sh) {
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const date = sh.getRange(DATE_CELL).getValue();
@@ -179,13 +206,17 @@ function recordWeek_(sh) {
   const tab = ensureGivingTab_(fiscalYear_(sunday));
   const row = givingRow_(tab, sunday, tz);
   if (!row) return;
-  tab.getRange(row, 4).setValue(weekFigures_(sh).subtotal);
-  tab.getRange(row, 8).setValue(sh.getName());
+  let reports = sundayReports_(sunday, tz);
+  if (!reports.some(function (t) { return t.getName() === sh.getName(); })) reports = reports.concat([sh]);
+  const cents = reports.reduce(function (n, t) { return n + Math.round(weekFigures_(t).subtotal * 100); }, 0);
+  tab.getRange(row, 4).setValue(cents / 100);
+  tab.getRange(row, 8).setValue(reports.map(function (t) { return t.getName(); }).join(REPORT_LIST_SEPARATOR));
 }
 
 /**
  * Budget figures for a report's Sunday from its giving tab: the weekly budget,
- * the year to date and the balance (null when that week isn't filled in).
+ * the week's total and its report tabs, the year to date and the balance (null
+ * when that week isn't filled in).
  */
 function givingFor_(sh, tz) {
   const date = sh.getRange(DATE_CELL).getValue();
@@ -194,12 +225,14 @@ function givingFor_(sh, tz) {
   const tab = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(givingTabName_(fiscalYear_(sunday)));
   if (!tab) return null;
   const row = givingRow_(tab, sunday, tz);
-  const v = row ? tab.getRange(row, 1, 1, 7).getValues()[0] : null;
+  const v = row ? tab.getRange(row, 1, 1, 8).getValues()[0] : null;
   const num = function (x) { return x === '' || x === null || x === undefined ? null : Number(x); };
   return {
     tab: tab.getName(),
     budget: Number(tab.getRange(GIVING_BUDGET_CELL).getValue()) || 0,
     week: v ? v[0] : null,
+    weekTotal: v ? num(v[3]) : null,   // every verified report for this Sunday
+    reports: v && v[7] ? String(v[7]).split(REPORT_LIST_SEPARATOR) : [],
     ytd: v ? num(v[4]) : null,
     balance: v ? num(v[6]) : null,
   };
