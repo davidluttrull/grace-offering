@@ -439,7 +439,9 @@
       'Spanish Check', 'Spanish Cash', "God's Turn", 'Keenagers'],
   };
   const MAX_EXTRAS = 10;
-  const MAX_CHECKS = 34;
+  // Room for checks on the report. The script says how many (51 since a third
+  // column was added); until it answers, assume the older 34.
+  let MAX_CHECKS = 34;
 
   const DRAFT_KEY = 'gbc-offering-draft';
   const NAMES_KEY = 'gbc-offering-counters';
@@ -664,6 +666,11 @@
       const r = await fetch(API_URL);
       const c = await r.json();
       if (!Array.isArray(c.sundaySchool) || !Array.isArray(c.otherDesignations)) return;
+      if (Number(c.maxChecks) > 0 && Number(c.maxChecks) !== MAX_CHECKS) {
+        MAX_CHECKS = Number(c.maxChecks);
+        ensureBlankCheck();
+        recalc();
+      }
       fresh = { sundaySchool: c.sundaySchool, otherDesignations: c.otherDesignations };
     } catch (e) {
       return;

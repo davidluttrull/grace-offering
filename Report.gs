@@ -113,7 +113,7 @@ function reportData_(sh, tz) {
       return { name: v[0], quantity: num(v[1]), counted: Number(v[3]) || 0, office: num(v[4]) };
     });
   };
-  const checkCells = sh.getRange('G9:H26').getValues();
+  const checkCells = sh.getRange(CHECKS_RANGE).getValues();
   let checkCount = 0;
   checkCells.forEach(function (line) { line.forEach(function (v) { if (typeof v === 'number') checkCount++; }); });
   const totals = sh.getRange('C31:D34').getValues();
@@ -204,20 +204,20 @@ function readDesignations_(sh) {
 // inline-block columns: side by side on a computer, stacked on a phone.
 
 const FONT = "font-family:Poppins,'Helvetica Neue',Helvetica,Arial,sans-serif;";
-const DASH = '<span style="color:#AAAAAA">—</span>';
+const DASH = '<span style="color:#AAAAAA">\u2014</span>';
 
-/** 1234.5 -> "$1,234.50"; null -> "—". */
+/** 1234.5 -> "$1,234.50"; null -> "-". */
 function usd_(n) {
-  if (n === null || n === undefined || n === '') return '—';
+  if (n === null || n === undefined || n === '') return '\u2014';
   const c = Math.round(Math.abs(Number(n)) * 100);
   const whole = String(Math.floor(c / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return (Number(n) < 0 ? '−' : '') + '$' + whole + '.' + ('0' + (c % 100)).slice(-2);
+  return (Number(n) < 0 ? '\u2212' : '') + '$' + whole + '.' + ('0' + (c % 100)).slice(-2);
 }
 
-/** Office minus counted, as "+$12.00" / "−$3.50", or "Matches". */
+/** Office minus counted, as "+$12.00" / "-$3.50", or "Matches". */
 function diff_(office, counted) {
   const d = Math.round((office - counted) * 100);
-  return d === 0 ? 'Matches' : (d > 0 ? '+' : '−') + usd_(Math.abs(d) / 100);
+  return d === 0 ? 'Matches' : (d > 0 ? '+' : '\u2212') + usd_(Math.abs(d) / 100);
 }
 
 function esc_(s) {
@@ -307,10 +307,10 @@ function diffCell_(office, counted) {
     : '<span style="color:' + THEME.diff + ';font-weight:600">' + t + '</span>';
 }
 
-/** "+$29,600.16 over" / "−$4,296.52 under" against the budget, or a dash. */
+/** "+$29,600.16 over" / "-$4,296.52 under" against the budget, or a dash. */
 function overUnder_(n) {
-  if (n === null || n === undefined) return '—';
-  return (n < 0 ? '−' : '+') + usd_(Math.abs(n)) + (n < 0 ? ' under' : ' over');
+  if (n === null || n === undefined) return '\u2014';
+  return (n < 0 ? '\u2212' : '+') + usd_(Math.abs(n)) + (n < 0 ? ' under' : ' over');
 }
 
 function overUnderCell_(n) {
@@ -323,8 +323,8 @@ function reportHtml_(d, updated) {
   const T = THEME;
   const totalDiff = Math.round((d.office[3] - d.counted[3]) * 100);
   const out = [];
-  const preview = 'General fund ' + usd_(d.weekTotal) + ' · ' + usd_(d.totalGiving) + ' total giving' +
-    (d.verified ? (totalDiff === 0 ? ' · count matches' : ' · count differs by ' + diff_(d.office[3], d.counted[3])) : ' · not verified');
+  const preview = 'General fund ' + usd_(d.weekTotal) + ' \u00b7 ' + usd_(d.totalGiving) + ' total giving' +
+    (d.verified ? (totalDiff === 0 ? ' \u00b7 count matches' : ' \u00b7 count differs by ' + diff_(d.office[3], d.counted[3])) : ' \u00b7 not verified');
 
   out.push('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">' +
@@ -350,7 +350,7 @@ function reportHtml_(d, updated) {
   const combined = d.otherReports.length > 0;
   const forWeek = g ? Math.round((d.weekTotal - g.budget) * 100) / 100 : null;
   const ytdBalance = g ? g.balance : null;
-  const signed = function (n) { return n === null || n === undefined ? '—' : (n < 0 ? '−' : '+') + usd_(Math.abs(n)); };
+  const signed = function (n) { return n === null || n === undefined ? '\u2014' : (n < 0 ? '\u2212' : '+') + usd_(Math.abs(n)); };
   const box = function (inner, bg, border) {
     return eSlot_(eTable_('<tr><td style="' + FONT + 'padding:12px 14px;line-height:1.3;background:' + bg + ';border:1px solid ' + border +
         ';border-radius:12px;height:96px;vertical-align:top">' + inner + '</td></tr>', 'border-collapse:separate'), 'margin-top:10px');
@@ -406,8 +406,8 @@ function reportHtml_(d, updated) {
   const pair = function (left, right) {
     return eRow_(left + right);
   };
-  const status = !d.verified ? '<span style="color:' + T.muted + '">Not verified yet. These are the counters’ figures.</span>'
-    : totalDiff === 0 ? '<span style="color:' + T.match + '">✓ The business office count matches the counters.</span>'
+  const status = !d.verified ? '<span style="color:' + T.muted + '">Not verified yet. These are the counters\u2019 figures.</span>'
+    : totalDiff === 0 ? '<span style="color:' + T.match + '">\u2713 The business office count matches the counters.</span>'
     : '<span style="color:' + T.diff + ';font-weight:600">The business office count differs from the counters by ' + diff_(d.office[3], d.counted[3]) + '.</span>';
   out.push(eCard_(pair(generalBox, weekBox) + pair(ytdBox, mixBox) +
     '<p style="' + FONT + 'margin:12px 0 0;font-size:13px">' + status + '</p>'));
@@ -418,19 +418,19 @@ function reportHtml_(d, updated) {
     eCaption_('General fund is the offering, less designated and mission fund gifts, plus online giving. Year to date is the fiscal year' +
       (g ? ' (' + g.tab.replace(GIVING_TAB_PREFIX, '') + ')' : '') + ', July through June.') +
     eColumns_(
-      eSubhead_('General Fund') + pairs([['Weekly budget', g ? usd_(g.budget) : '—'], ['General fund (offering)', usd_(w.generalFund)],
+      eSubhead_('General Fund') + pairs([['Weekly budget', g ? usd_(g.budget) : '\u2014'], ['General fund (offering)', usd_(w.generalFund)],
         ['Online giving', usd_(w.online)], ['Subtotal general fund', usd_(w.subtotal)]]
           .concat(combined ? [['Week total (' + (d.otherReports.length + 1) + ' reports)', usd_(d.weekTotal)]] : [])
           .concat([['For week', overUnderCell_(forWeek)]]),
         [null, null, null, 'sub'].concat(combined ? ['sub'] : []).concat([null])),
       eSubhead_('Funds and Year to Date') + pairs([['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
-        ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)], ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']],
+        ['Weekly fiscal YTD', overUnderCell_(g ? g.balance : null)], ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '\u2014']],
         [null, null, null, 'sub']))));
 
   // Verification: counted beside office
   const vRows = [], vStyles = [];
   ['Coins', 'Bills', 'Checks', 'Total Offering'].forEach(function (name, i) {
-    vRows.push([name, usd_(d.counted[i]), d.verified ? usd_(d.office[i]) : '—', d.verified ? diffCell_(d.office[i], d.counted[i]) : '—']);
+    vRows.push([name, usd_(d.counted[i]), d.verified ? usd_(d.office[i]) : '\u2014', d.verified ? diffCell_(d.office[i], d.counted[i]) : '\u2014']);
     vStyles.push(i === 3 ? 'sub' : null);
   });
   vRows.push(['Online giving', '', usd_(d.online === null ? 0 : d.online), '']);
@@ -503,13 +503,13 @@ function reportHtml_(d, updated) {
 /** The bulletin figures as [label, value] pairs, for the plain-text email. */
 function budgetLines_(d) {
   const w = d.week, g = d.giving;
-  return [['Weekly budget', g ? usd_(g.budget) : '—'],
+  return [['Weekly budget', g ? usd_(g.budget) : '\u2014'],
     ['General fund this week', usd_(d.weekTotal) + (g ? ' (' + overUnder_(Math.round((d.weekTotal - g.budget) * 100) / 100) + ' budget)' : '')]]
     .concat(d.otherReports.length ? [['  This report', usd_(w.subtotal)], ['  Also for this Sunday', d.otherReports.join(' and ')]] : [])
     .concat([
-    ['Weekly fiscal YTD', g && g.balance !== null ? overUnder_(g.balance) + ' budget' : '—'],
+    ['Weekly fiscal YTD', g && g.balance !== null ? overUnder_(g.balance) + ' budget' : '\u2014'],
     ['Designated', usd_(w.designated)], ['Mission Fund', usd_(w.mission)],
-    ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '—']]);
+    ['Year to date', g && g.ytd !== null ? usd_(g.ytd) : '\u2014']]);
 }
 
 // ---- Plain-text email -----------------------------------------------------------

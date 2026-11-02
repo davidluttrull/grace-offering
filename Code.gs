@@ -47,13 +47,18 @@ const BILLS = [
   { name: 'Hundreds', cell: 'B26', value: 100 },
 ];
 
-// Individual check amounts fill column G, then column H. Rows 17-18 are one
-// merged cell in each column.
+// Individual check amounts fill column G, then H, then I: 17 to a column, 51
+// in all. Rows 17-18 are one merged cell in each column. The total is in H27
+// (merged across H27:I27), which the Totals box reads.
 const CHECK_CELLS = [].concat(
   ['G9', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15', 'G16', 'G17',
    'G19', 'G20', 'G21', 'G22', 'G23', 'G24', 'G25', 'G26'],
   ['H9', 'H10', 'H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17',
-   'H19', 'H20', 'H21', 'H22', 'H23', 'H24', 'H25', 'H26']);
+   'H19', 'H20', 'H21', 'H22', 'H23', 'H24', 'H25', 'H26'],
+  ['I9', 'I10', 'I11', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17',
+   'I19', 'I20', 'I21', 'I22', 'I23', 'I24', 'I25', 'I26']);
+const CHECKS_RANGE = 'G9:I26';
+const CHECKS_TOTAL_FORMULA = '=sum(G9:G26)+sum(H9:H26)+sum(I9:I26)';
 
 const COUNTER_CELLS = ['G31', 'G32', 'G33'];
 
@@ -109,7 +114,7 @@ const MAX_BAD_CODES = 20;   // wrong counter codes allowed per 10 minutes, acros
 
 /** GET: the designation lists the page shows. Also confirms the deployment is live. */
 function doGet() {
-  return json_({ status: 'ok', sundaySchool: SUNDAY_SCHOOL, otherDesignations: OTHER_DESIGNATIONS });
+  return json_({ status: 'ok', sundaySchool: SUNDAY_SCHOOL, otherDesignations: OTHER_DESIGNATIONS, maxChecks: CHECK_CELLS.length });
 }
 
 /** POST from the page, body = the report. Sent as plain text with no Google login. */
@@ -153,6 +158,7 @@ function setup() {
     buildTemplate_(template);
   }
   ensureOnlineRows_(template);
+  template.getRange('H27').setFormula(CHECKS_TOTAL_FORMULA);   // older Templates summed two columns
   styleReport_(template);
   template.getRangeList(inputCells_().concat(OFFICE_CELLS)).clearContent();
   // Each report lays out its own Designations section below the title.
@@ -207,7 +213,7 @@ function buildTemplate_(sheet) {
   r('E27').setFormula('=SUM(E20:E26)');
 
   r('G8').setValue('Checks');
-  r('H27').setFormula('=sum(G9:G26)+sum(H9:H26)');
+  r('H27').setFormula(CHECKS_TOTAL_FORMULA);
 
   r('B30').setValue('Totals');
   r('B31:B34').setValues([['Coins'], ['Bills'], ['Checks'], ['Total Offering']]);
@@ -266,17 +272,17 @@ function styleReport_(sheet) {
 
   sheet.setHiddenGridlines(true);
   sheet.setTabColor(T.brand);
-  r('A1:H37').setFontFamily(T.font).setFontSize(11).setFontColor(T.ink).setVerticalAlignment('middle');
-  [129, 129, 129, 129, 129, 48, 129, 129].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
+  r('A1:I37').setFontFamily(T.font).setFontSize(11).setFontColor(T.ink).setVerticalAlignment('middle');
+  [129, 129, 129, 129, 129, 48, 129, 129, 129].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
   const heights = { 1: 50, 4: 29, 5: 29, 7: 31, 8: 43, 16: 35, 19: 43, 27: 35, 30: 43, 34: 35, 35: 27, 36: 27, 37: 31 };
   for (let row = 1; row <= 37; row++) sheet.setRowHeight(row, heights[row] || (row >= 9 && row <= 33 && row !== 17 && row !== 18 && row !== 28 && row !== 29 ? 27 : 21));
 
   // Title bar, date, instructions
-  r('A1:H1').merge().setBackground(T.deep).setFontColor('#FFFFFF').setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center');
+  r('A1:I1').breakApart().merge().setBackground(T.deep).setFontColor('#FFFFFF').setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center');
   r('A4').setFontWeight('bold');
   r('B4:C4').merge().setBackground(T.input).setHorizontalAlignment('right').setNumberFormat('M/d/yyyy')
     .setBorder(null, null, true, null, null, null, T.brand, SpreadsheetApp.BorderStyle.SOLID);
-  r('A7:H7').merge().setFontSize(10).setFontColor(T.muted);
+  r('A7:I7').breakApart().merge().setFontSize(10).setFontColor(T.muted);
 
   // Coins (rows 8-16) and bills (rows 19-27)
   [[8, COINS, 16], [19, BILLS, 27]].forEach(function (block) {
@@ -292,14 +298,17 @@ function styleReport_(sheet) {
     r('E' + total).setFontWeight('normal');
   });
 
-  // Checks: G9:H26, with G17:G18 and H17:H18 merged
-  r('G8:H8').merge();
+  // Checks: G9:I26, with rows 17-18 merged in each column. The total in H27
+  // spans H27:I27. (Merges are undone first, since older tabs had two columns.)
+  r('G8:I8').breakApart().merge();
   r('G17:G18').merge();
   r('H17:H18').merge();
-  LOOK.box(r('G8:H27'));
-  LOOK.header(r('G8:H8'));
-  r('G9:H26').setBackground(T.input).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
-  LOOK.subtotal(r('G27:H27'));
+  r('I17:I18').merge();
+  r('H27:I27').breakApart().merge();
+  LOOK.box(r('G8:I27'));
+  LOOK.header(r('G8:I8'));
+  r('G9:I26').setBackground(T.input).setNumberFormat(DOLLARS).setHorizontalAlignment('right');
+  LOOK.subtotal(r('G27:I27'));
   r('H27').setNumberFormat(DOLLARS).setHorizontalAlignment('right');
 
   // Totals: Total Offering is dark green like the pages' bottom bar.
@@ -322,7 +331,7 @@ function styleReport_(sheet) {
   r('G36').setHorizontalAlignment('left');
   r('H36').setNumberFormat('M/d/yyyy').setHorizontalAlignment('right');
 
-  LOOK.title(r('A37:H37').merge());
+  LOOK.title(r('A37:I37').breakApart().merge());
   if (r('B35').getValue() === 'Online Giving') styleOnlineRows_(sheet);
 }
 
@@ -433,6 +442,7 @@ function submitReport(form) {
     ss.setActiveSheet(sheet);
     ss.moveActiveSheet(1);
     writes.forEach(function (w) { sheet.getRange(w[0]).setValue(w[1]); });
+    sheet.getRange('H27').setFormula(CHECKS_TOTAL_FORMULA);
     writeDesignations_(sheet, groups);
     SpreadsheetApp.flush();
 
@@ -556,7 +566,7 @@ function getReport_(tab) {
       return { name: item.name, quantity: v[i][1], counted: Number(v[i][3]) || 0, office: v[i][4] };
     });
   };
-  const checkCells = sh.getRange('G9:H26').getValues();
+  const checkCells = sh.getRange(CHECKS_RANGE).getValues();
   let checkCount = 0;
   checkCells.forEach(function (line) { line.forEach(function (v) { if (typeof v === 'number') checkCount++; }); });
   const totals = sh.getRange('C31:D34').getValues();

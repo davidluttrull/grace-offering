@@ -145,6 +145,7 @@
   .dollar input { padding-left: 26px; }
   .dollar input.match { border-color: var(--match); background: var(--match-bg); }
   .dollar input.diff { border-color: var(--diff-line); background: var(--diff-bg); }
+  .dollar input.missing { border: 2px dashed var(--diff-line); background: var(--diff-bg); }
   .line.sum { border-top: 2px solid var(--ink); margin-top: 2px; font-weight: 700; }
   .line.sum .office { text-align: right; font-variant-numeric: tabular-nums; }
   .note { font-size: 13px; text-align: right; margin-top: 3px; }
@@ -431,6 +432,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   let report = null;
+  let flagMissing = false;   // set after a save attempt finds empty office boxes
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -531,6 +533,7 @@
   // ---- One report -------------------------------------------------------------
 
   async function loadReport(tab) {
+    flagMissing = false;
     setStatus('Loading ' + tab + '…');
     $('#view').hidden = true;
     $('#bar').hidden = true;
@@ -631,9 +634,16 @@
       const counted = Number(input.dataset.counted);
       const office = cents(input.value);
       const note = input.closest('.line').querySelector('.note');
-      input.classList.remove('match', 'diff');
+      input.classList.remove('match', 'diff', 'missing');
       note.className = 'note';
       note.hidden = true;
+      // After a save attempt, point out empty boxes the counters counted something for.
+      if (flagMissing && office === null && counted > 0 && input.dataset.key.indexOf('des') !== 0) {
+        input.classList.add('missing');
+        note.classList.add('diff');
+        note.textContent = 'Not entered. The counters counted ' + usd(counted) + '.';
+        note.hidden = false;
+      }
       if (input.dataset.fund) inFund[input.dataset.fund] += office !== null ? office : counted;
       if (office !== null) {
         const kind = input.dataset.key.split(':')[0];
@@ -765,6 +775,13 @@
 
   // ---- Save ---------------------------------------------------------------
 
+  // Coin, bill and checks boxes the office left empty although the counters
+  // counted something there. Empty adds nothing to the office's total.
+  function missingAmounts() {
+    return $$('#view input[data-key]').filter((input) =>
+      input.dataset.key.indexOf('des') !== 0 && input.value.trim() === '' && Number(input.dataset.counted) > 0);
+  }
+
   async function save() {
     const verifier = $('#verifier').value.trim();
     if (!verifier) {
@@ -773,6 +790,27 @@
       return;
     }
     $('#toast').hidden = true;
+    const missing = missingAmounts();
+    if (missing.length) {
+      const left = missing.reduce((t, i) => t + Number(i.dataset.counted), 0);
+      const names = missing.map((i) => '<li>' + esc(i.closest('.row').querySelector('.name').firstChild.textContent) +
+        ': counted ' + usd(Number(i.dataset.counted)) + '</li>').join('');
+      const back = await dialog({
+        title: missing.length === 1 ? 'An office amount is empty' : missing.length + ' office amounts are empty',
+        body: '<ul style="margin:0;padding-left:20px">' + names + '</ul>' +
+          '<p>An empty box adds nothing, so the office’s Total Offering would leave out <b>' + usd(left) + '</b>. ' +
+          'Enter what the office counted, even when it matches.</p>',
+        ok: 'Go back and enter',
+        cancel: 'Save anyway',
+      });
+      if (back) {
+        flagMissing = true;
+        recalc();
+        missing[0].focus();
+        missing[0].scrollIntoView({ block: 'center' });
+        return;
+      }
+    }
     const t = recalc();
     const counted = t.counted.map((v) => Math.round(v * 100));
     const warn = t.differing
