@@ -178,17 +178,17 @@ const REPORT_LIST_SEPARATOR = '; ';
 
 /**
  * Every verified report tab dated in the week of this Sunday (Sunday through
- * Saturday), oldest tab first. Tabs are named for their report's date, so only
- * tabs whose name falls in that week are opened.
+ * Saturday), oldest tab first; with all, unverified ones too. Tabs are named
+ * for their report's date, so only tabs whose name falls in that week are opened.
  */
-function sundayReports_(sunday, tz) {
+function sundayReports_(sunday, tz, all) {
   const want = Utilities.formatDate(sunday, tz, 'yyyy-MM-dd');
   const from = sunday.getTime() - 86400000, to = sunday.getTime() + 7 * 86400000;
   return SpreadsheetApp.getActiveSpreadsheet().getSheets().filter(function (t) {
     if (t.getName() === TEMPLATE_NAME) return false;
     const named = new Date(t.getName().replace(/\s*\(\d+\)$/, ''));
     if (isNaN(named.getTime()) || named.getTime() < from || named.getTime() > to) return false;
-    if (t.getRange('A1').getValue() !== TITLE || !t.getRange(VERIFIER_CELL).getValue()) return false;
+    if (t.getRange('A1').getValue() !== TITLE || (!all && !t.getRange(VERIFIER_CELL).getValue())) return false;
     const d = t.getRange(DATE_CELL).getValue();
     return d instanceof Date && Utilities.formatDate(sundayOf_(d, tz), tz, 'yyyy-MM-dd') === want;
   }).reverse();   // report tabs are kept newest first
@@ -197,20 +197,46 @@ function sundayReports_(sunday, tz) {
 /**
  * Writes the week's general fund into its Sunday's row of the giving tab: the
  * total of every verified report for that Sunday, with their tab names.
+ * Returns 'recorded', or 'kept' when the week was typed in by hand (an amount
+ * with no report named beside it), which is left as it is.
  */
 function recordWeek_(sh) {
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const date = sh.getRange(DATE_CELL).getValue();
-  if (!(date instanceof Date)) return;
+  if (!(date instanceof Date)) return '';
   const sunday = sundayOf_(date, tz);
   const tab = ensureGivingTab_(fiscalYear_(sunday));
   const row = givingRow_(tab, sunday, tz);
-  if (!row) return;
+  if (!row) return '';
+  const typed = tab.getRange(row, 4, 1, 5).getValues()[0];   // WK GEN FUND ... REPORT
+  if (typed[0] !== '' && typed[4] === '') return 'kept';
   let reports = sundayReports_(sunday, tz);
   if (!reports.some(function (t) { return t.getName() === sh.getName(); })) reports = reports.concat([sh]);
   const cents = reports.reduce(function (n, t) { return n + Math.round(weekFigures_(t).subtotal * 100); }, 0);
   tab.getRange(row, 4).setValue(cents / 100);
-  tab.getRange(row, 8).setValue(reports.map(function (t) { return t.getName(); }).join(REPORT_LIST_SEPARATOR));
+  // As text: Sheets would read a single "Oct 18, 2026" as a date.
+  tab.getRange(row, 8).setNumberFormat('@').setValue(reports.map(function (t) { return t.getName(); }).join(REPORT_LIST_SEPARATOR));
+  return 'recorded';
+}
+
+/**
+ * The other report tabs for the same Sunday as this one, verified or not, for
+ * the office's page: every verified one is added into the week's general fund.
+ */
+function sameSundayReports_(sh, tz) {
+  const date = sh.getRange(DATE_CELL).getValue();
+  if (!(date instanceof Date)) return [];
+  return sundayReports_(sundayOf_(date, tz), tz, true)
+    .filter(function (t) { return t.getName() !== sh.getName(); })
+    .map(function (t) {
+      const v = t.getRange('C34:D35').getValues();
+      return {
+        tab: t.getName(),
+        verified: !!t.getRange(VERIFIER_CELL).getValue(),
+        counted: Number(v[0][0]) || 0,
+        online: Number(v[1][1]) || 0,
+      };
+    });
 }
 
 /**
@@ -227,6 +253,8 @@ function givingFor_(sh, tz) {
   const row = givingRow_(tab, sunday, tz);
   const v = row ? tab.getRange(row, 1, 1, 8).getValues()[0] : null;
   const num = function (x) { return x === '' || x === null || x === undefined ? null : Number(x); };
+  // Rows saved before REPORT was written as text hold one tab name read as a date.
+  if (v && v[7] instanceof Date) v[7] = Utilities.formatDate(v[7], tz, 'MMM d, yyyy');
   return {
     tab: tab.getName(),
     budget: Number(tab.getRange(GIVING_BUDGET_CELL).getValue()) || 0,

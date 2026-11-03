@@ -472,6 +472,8 @@ function reportHtml_(d, updated) {
       const given = gr.items.filter(function (x) { return x.amount !== null || (d.verified && x.office !== null); });
       if (!given.length) return eSubhead_(gr.title) + '<p style="' + FONT + 'margin:0;font-size:13px;color:' + T.muted + '">None this week.</p>';
       const sum = function (key) { return given.reduce(function (t, x) { return t + Math.round((x[key] || 0) * 100); }, 0) / 100; };
+      // An empty office box counts as the counted amount, as it does for the general fund.
+      const officeSum = given.reduce(function (t, x) { return t + Math.round((x.office !== null ? x.office : x.amount || 0) * 100); }, 0) / 100;
       const styles = given.map(function () { return null; }).concat(['sub']);
       if (!d.verified) {
         return eSubhead_(gr.title) + eGrid_([{ label: 'Name' }, { label: 'Amount', right: true }],
@@ -479,7 +481,7 @@ function reportHtml_(d, updated) {
       }
       return eSubhead_(gr.title) + eGrid_([{ label: 'Name' }, { label: 'Counted', right: true }, { label: 'Office', right: true }],
         given.map(function (x) { return [esc_(x.label), x.amount === null ? DASH : usd_(x.amount), officeCell(x)]; })
-          .concat([['Total', usd_(sum('amount')), officeCell({ amount: sum('amount'), office: sum('office') })]]), styles);
+          .concat([['Total', usd_(sum('amount')), officeCell({ amount: sum('amount'), office: officeSum })]]), styles);
     };
     let html = '';
     for (let i = 0; i < d.designations.length; i += 2) html += eColumns_(group(d.designations[i]), group(d.designations[i + 1]));

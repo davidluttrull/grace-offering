@@ -439,9 +439,8 @@
       'Spanish Check', 'Spanish Cash', "God's Turn", 'Keenagers'],
   };
   const MAX_EXTRAS = 10;
-  // Room for checks on the report. The script says how many (51 since a third
-  // column was added); until it answers, assume the older 34.
-  let MAX_CHECKS = 34;
+  // Room for checks on the report. The script says how many when it answers.
+  let MAX_CHECKS = 51;
 
   const DRAFT_KEY = 'gbc-offering-draft';
   const NAMES_KEY = 'gbc-offering-counters';
@@ -552,9 +551,11 @@
   // Checks: there's always one empty box at the end, so counters can keep typing.
   function checkInputs() { return $$('#checks input'); }
 
-  function addCheck(value) {
+  // keep: restoring saved checks, which are never dropped (the script refuses
+  // more than it has room for, so nobody loses one without being told).
+  function addCheck(value, keep) {
     const list = $('#checks');
-    if (list.children.length >= MAX_CHECKS) return null;
+    if (!keep && list.children.length >= MAX_CHECKS) return null;
     const row = document.createElement('div');
     row.className = 'check';
     row.innerHTML = '<span class="n"></span>' +
@@ -580,7 +581,7 @@
 
   function setChecks(values) {
     $('#checks').innerHTML = '';
-    (values || []).forEach((v) => addCheck(v));
+    (values || []).forEach((v) => addCheck(v, true));
     ensureBlankCheck();
   }
 
@@ -821,7 +822,8 @@
       check: true,
       title: 'Report saved',
       body: '<table><tr class="grand"><td>Total Offering</td><td>' + usd(sheetTotal) + '</td></tr></table>' +
-        '<div class="names">Saved to the tab <b>' + esc(res.tab) + '</b>.</div>' + mismatch,
+        '<div class="names">' + (res.repeat ? 'This report was already saved to the tab <b>' + esc(res.tab) + '</b>, so it wasn’t saved twice.'
+          : 'Saved to the tab <b>' + esc(res.tab) + '</b>.') + '</div>' + mismatch,
       ok: 'Start a new report',
     });
     resetForm();

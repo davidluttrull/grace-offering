@@ -318,6 +318,7 @@
       <select id="tab" aria-label="Report"></select>
       <div class="meta" id="meta"></div>
       <div class="notice" id="already" hidden></div>
+      <div class="notice" id="others" hidden></div>
     </section>
 
     <div class="status" id="status" hidden></div>
@@ -538,6 +539,7 @@
     $('#view').hidden = true;
     $('#bar').hidden = true;
     $('#already').hidden = true;
+    $('#others').hidden = true;
     try {
       report = await call('report', { tab: tab });
     } catch (err) {
@@ -551,6 +553,14 @@
       $('#already').innerHTML = 'Verified by <b>' + esc(report.verifiedBy) + '</b>' +
         (report.verifiedOn ? ' on ' + esc(report.verifiedOn) : '') + '. Saving again replaces those figures.';
       $('#already').hidden = false;
+    }
+    // Every verified report for a Sunday is added into that week's general fund.
+    const others = report.sameSunday || [];
+    if (others.length) {
+      $('#others').innerHTML = 'Also for this Sunday: ' + others.map((o) => '<b>' + esc(o.tab) + '</b> (' + usd(Math.round(o.counted * 100)) +
+        (o.verified ? ', verified' : ', not verified') + ')').join(', ') +
+        '. Each verified report is added into the week’s general fund, so if one is the same count entered twice, verify only one of them.';
+      $('#others').hidden = false;
     }
     render();
     $('#view').hidden = false;
@@ -629,7 +639,7 @@
     // Designation envelopes in the offering, by fund: the office's amount where
     // it's entered, the count where it isn't (as the giving tab records it).
     const inFund = { general: 0, designated: 0, mission: 0 };
-    let differing = 0, desDiffering = 0, desEntered = false;
+    let differing = 0, desDiffering = 0, desEntered = false, desDelta = 0;
     $$('#view input[data-key]').forEach((input) => {
       const counted = Number(input.dataset.counted);
       const office = cents(input.value);
@@ -648,7 +658,7 @@
       if (office !== null) {
         const kind = input.dataset.key.split(':')[0];
         sums[kind] += office;
-        if (kind === 'des') desEntered = true;
+        if (kind === 'des') { desEntered = true; desDelta += office - counted; }
         if (office === counted) {
           input.classList.add('match');
         } else {
@@ -693,11 +703,12 @@
       const desCounted = report.designations.reduce((t, g) => t + g.items.reduce((s, x) => s + Math.round((x.amount || 0) * 100), 0), 0);
       const desNote = $('#desNote');
       $('#desCounted').textContent = usd(desCounted);
-      $('#desOffice').textContent = desEntered ? usd(sums.des) : '';
+      // An empty box counts as the counted amount, as it does for the general fund.
+      $('#desOffice').textContent = desEntered ? usd(desCounted + desDelta) : '';
       $('#desSum').textContent = usd(desCounted) + ' counted';
-      desNote.hidden = !desEntered || sums.des === desCounted;
+      desNote.hidden = !desEntered || desDelta === 0;
       desNote.className = 'note diff';
-      desNote.textContent = 'Office counted ' + usd(Math.abs(sums.des - desCounted)) + (sums.des > desCounted ? ' more' : ' less');
+      desNote.textContent = 'Office counted ' + usd(Math.abs(desDelta)) + (desDelta > 0 ? ' more' : ' less');
     }
     const totalDiff = office[3] - Math.round(counted[3] * 100);
     $('#barTotal').textContent = usd(office[3]);
@@ -812,6 +823,23 @@
       }
     }
     const t = recalc();
+    // Another verified report for this Sunday is added into the same week.
+    const verifiedOthers = (report.sameSunday || []).filter((o) => o.verified);
+    const twin = verifiedOthers.find((o) => Math.round(o.counted * 100) === Math.round(t.counted[3] * 100));
+    const onlineThere = t.online ? verifiedOthers.find((o) => Math.round(o.online * 100) > 0) : null;
+    if (twin || onlineThere) {
+      const back = await dialog({
+        title: twin ? 'This may be the same count twice' : 'Online giving is already entered',
+        body: (twin ? '<p><b>' + esc(twin.tab) + '</b> is verified for the same Sunday with the same counted total, ' + usd(Math.round(twin.counted * 100)) +
+            '. Both would be added into the week’s general fund. If it’s the same offering entered twice, don’t verify this one.</p>' : '') +
+          (onlineThere ? '<p><b>' + esc(onlineThere.tab) + '</b> already has ' + usd(Math.round(onlineThere.online * 100)) +
+            ' of online giving for this Sunday. Online giving is for the whole week, so entering it on both counts it twice. ' +
+            'Leave Online giving empty here unless it’s more giving.</p>' : ''),
+        ok: 'Go back',
+        cancel: 'Save anyway',
+      });
+      if (back) return;
+    }
     const counted = t.counted.map((v) => Math.round(v * 100));
     const warn = t.differing
       ? '<p><b>' + t.differing + (t.differing === 1 ? ' amount differs' : ' amounts differ') + ' from the count' +
@@ -847,6 +875,7 @@
         [['Additional designated', Math.round(((res.additional || {}).designated || 0) * 100)], ['Additional mission fund', Math.round(((res.additional || {}).mission || 0) * 100)]],
         t.general) +
         '<p>Saved to the tab <b>' + esc(res.tab) + '</b>.</p>' + emailNote(res.emailed) +
+        (res.givingKept ? '<p>This Sunday’s row on the giving tab was typed in by hand, so it was left as it is.</p>' : '') +
         // An older script ignores online giving and doesn't email; it doesn't send totalGiving back.
         (res.totalGiving === undefined
           ? '<p><b>The online giving wasn’t saved</b> because the script in the Sheet hasn’t been updated yet. ' +

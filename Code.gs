@@ -158,7 +158,7 @@ function setup() {
     buildTemplate_(template);
   }
   ensureOnlineRows_(template);
-  template.getRange('H27').setFormula(CHECKS_TOTAL_FORMULA);   // older Templates summed two columns
+  writeFormulas_(template);
   styleReport_(template);
   template.getRangeList(inputCells_().concat(OFFICE_CELLS)).clearContent();
   // Each report lays out its own Designations section below the title.
@@ -168,7 +168,11 @@ function setup() {
   ss.getSheets().forEach(function (sh) {
     const name = sh.getName();
     if (name.indexOf(GIVING_TAB_PREFIX) === 0) styleGivingTab_(sh);
-    else if (name !== TEMPLATE_NAME && sh.getRange('A1').getValue() === TITLE && !isStyled_(sh)) restyleReport_(sh);
+    else if (name !== TEMPLATE_NAME && sh.getRange('A1').getValue() === TITLE) {
+      if (!isStyled_(sh)) restyleReport_(sh);
+      writeFormulas_(sh);   // puts back any total formula deleted by hand
+      repairOfficeTotal_(sh);
+    }
   });
   ss.setActiveSheet(template);
   ss.moveActiveSheet(ss.getNumSheets());
@@ -204,26 +208,42 @@ function buildTemplate_(sheet) {
       const row = top + 1 + i;
       r('A' + row).setValue(item.name);
       r('C' + row).setValue(item.value);
-      r('D' + row).setFormula('=B' + row + '*C' + row);
     });
     r('A' + total).setValue(block[4]);
-    r('D' + total).setFormula('=sum(D' + (top + 1) + ':D' + (top + list.length) + ')');
   });
-  r('E16').setFormula('=SUM(E9:E14)');
-  r('E27').setFormula('=SUM(E20:E26)');
 
   r('G8').setValue('Checks');
-  r('H27').setFormula(CHECKS_TOTAL_FORMULA);
-
   r('B30').setValue('Totals');
   r('B31:B34').setValues([['Coins'], ['Bills'], ['Checks'], ['Total Offering']]);
-  r('C31:C34').setFormulas([['=D16'], ['=D27'], ['=H27'], ['=sum(C31:C33)']]);
-  r('D31:D32').setFormulas([['=E16'], ['=E27']]);
-  r('D34').setFormula('=SUM(D31:D33)');
+  writeFormulas_(sheet);
   r('G30').setValue('Name of Counters');
   r('G35').setValue('Verified By');   // filled in from the business office's page
   r('A37').setValue('Designations');  // setup and each report fill in the rows below it
   styleReport_(sheet);
+}
+
+/**
+ * Writes every formula the totals depend on: each coin and bill amount, Total
+ * Coins, Total Bills, the checks total and the Totals box. Formulas only, so it
+ * is safe on a report tab already filled in. setup and each new report run it,
+ * so a formula deleted from the Template by hand comes back.
+ */
+function writeFormulas_(sheet) {
+  const r = function (a1) { return sheet.getRange(a1); };
+  [[COINS, 16], [BILLS, 27]].forEach(function (block) {
+    const list = block[0], total = block[1];
+    const first = Number(list[0].cell.slice(1)), last = first + list.length - 1;
+    list.forEach(function (item) {
+      const row = item.cell.slice(1);
+      r('D' + row).setFormula('=B' + row + '*C' + row);
+    });
+    r('D' + total).setFormula('=SUM(D' + first + ':D' + last + ')');
+    r('E' + total).setFormula('=SUM(E' + first + ':E' + last + ')');
+  });
+  r('H27').setFormula(CHECKS_TOTAL_FORMULA);
+  r('C31:C34').setFormulas([['=D16'], ['=D27'], ['=H27'], ['=SUM(C31:C33)']]);
+  r('D31:D32').setFormulas([['=E16'], ['=E27']]);
+  r('D34').setFormula('=SUM(D31:D33)');
 }
 
 // The web pages' light theme, for the Sheet: Arial, the dark green title
@@ -437,25 +457,39 @@ function submitReport(form) {
     const template = ss.getSheetByName(TEMPLATE_NAME);
     if (!template) throw new Error('The Sheet has no Template tab. Run setup in Apps Script.');
 
+    // A phone that lost its connection after the Sheet saved sends the same
+    // report again. Hand back the tab already made instead of a second one,
+    // which would count the offering twice.
+    const cache = CacheService.getScriptCache();
+    const key = 'sub' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+      JSON.stringify([writes, groups]), Utilities.Charset.UTF_8));
+    const earlier = cache.get(key) && ss.getSheetByName(cache.get(key));
+    if (earlier) return savedReport_(earlier, true);
+
     const sheet = template.copyTo(ss).setName(uniqueName_(ss, tabName_(date)));
     sheet.showSheet();
     ss.setActiveSheet(sheet);
     ss.moveActiveSheet(1);
     writes.forEach(function (w) { sheet.getRange(w[0]).setValue(w[1]); });
-    sheet.getRange('H27').setFormula(CHECKS_TOTAL_FORMULA);
+    writeFormulas_(sheet);
     writeDesignations_(sheet, groups);
     SpreadsheetApp.flush();
-
-    // Read back what the report's formulas came to, so the page shows the Sheet's numbers.
-    const t = sheet.getRange('C31:C34').getValues();
-    return {
-      status: 'saved',
-      tab: sheet.getName(),
-      coins: t[0][0], bills: t[1][0], checks: t[2][0], total: t[3][0],
-    };
+    cache.put(key, sheet.getName(), 21600);   // 6 hours
+    return savedReport_(sheet, false);
   } finally {
     lock.releaseLock();
   }
+}
+
+/** What the report's formulas came to, so the page shows the Sheet's numbers. repeat: it was saved before. */
+function savedReport_(sheet, repeat) {
+  const t = sheet.getRange('C31:C34').getValues();
+  return {
+    status: 'saved',
+    tab: sheet.getName(),
+    repeat: repeat,
+    coins: t[0][0], bills: t[1][0], checks: t[2][0], total: t[3][0],
+  };
 }
 
 /** The two Designations groups: every listed item, then the counters' own additions. */
@@ -590,6 +624,7 @@ function getReport_(tab) {
     }),
     cash: extras.cash,
     additional: { designated: extras.addDesignated, mission: extras.addMission },
+    sameSunday: sameSundayReports_(sh, tz),
   };
 }
 
@@ -709,8 +744,7 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   range(1, 2).merge();
   LOOK.subtotal(style(5));
   range(1).setValue(DES_TOTAL_LABEL).setHorizontalAlignment('left');
-  range(3, 3).setFormulas([['=SUM(C' + first + ':C' + last + ')',
-    '=IF(COUNT(D' + first + ':D' + last + ')=0,"",SUM(D' + first + ':D' + last + '))',
+  range(3, 3).setFormulas([['=SUM(C' + first + ':C' + last + ')', officeTotalFormula_(row, first, last),
     '=IF(D' + row + '="","",D' + row + '-C' + row + ')']]);
   money(3, 3);
   // Differences: green when they match, amber when they don't, like the page.
@@ -741,6 +775,29 @@ function writeOfficeExtras_(sh, groups, cash, additional) {
   sh.getRange(TOTAL_GIVING_CELL).setFormula('=D34+D35+' + added.map(function (c) { return 'N(' + c + ')'; }).join('+'))
     .setNote('Total Offering + Online Giving + additional Designated and Mission Fund (' + added.join(', ') + '). ' +
       'Cash Unaccounted (' + cells[0] + ') is for the record only and isn\'t added.');
+}
+
+/**
+ * The office's Designations total: the counted total plus the office's
+ * differences, so a designation the office left empty counts as counted, the
+ * way the general fund figures it. Empty until the office enters one.
+ */
+function officeTotalFormula_(row, first, last) {
+  return '=IF(COUNT(D' + first + ':D' + last + ')=0,"",C' + row + '+SUM(E' + first + ':E' + last + '))';
+}
+
+/** Rewrites the office's Designations total on a tab verified before it counted empty boxes as counted. */
+function repairOfficeTotal_(sh) {
+  const start = officeExtrasRow_(sh);
+  if (!start) return;
+  const col = sh.getRange(start, 1, sh.getLastRow() - start + 1, 1).getValues();
+  for (let i = 0; i < col.length; i++) {
+    if (col[i][0] !== DES_TOTAL_LABEL) continue;
+    const row = start + i;
+    // The title and the column headings come before the first designation.
+    if (row - 1 >= start + 2) sh.getRange(row, 4).setFormula(officeTotalFormula_(row, start + 2, row - 1));
+    return;
+  }
 }
 
 /**
@@ -799,7 +856,7 @@ function verifyReport_(body) {
     });
     writeOfficeExtras_(sh, groups, cash, additional);
     SpreadsheetApp.flush();
-    recordWeek_(sh);
+    const week = recordWeek_(sh);
     SpreadsheetApp.flush();
     const t = sh.getRange('C31:D34').getValues();
     result = {
@@ -811,6 +868,7 @@ function verifyReport_(body) {
       totalGiving: Number(sh.getRange(TOTAL_GIVING_CELL).getValue()) || 0,
       cash: cash === '' ? 0 : cash,
       additional: { designated: additional.designated || 0, mission: additional.mission || 0 },
+      givingKept: week === 'kept',
     };
   } finally {
     lock.releaseLock();
